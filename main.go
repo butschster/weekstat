@@ -281,9 +281,11 @@ func computeOutput(st *State, now time.Time) Output {
 	// Stable daily budget. Instead of "quota left right now / fractional days
 	// left" (which drops the instant you spend anything today and drifts as the
 	// clock ticks), base it on the quota left at the START of today spread over
-	// the WHOLE days remaining (including today). Spending within today's share
-	// therefore does not shrink the budget; only carrying an over/under balance
-	// into tomorrow moves it, recomputed at the next day boundary.
+	// the whole days remaining. "Days remaining" = calendar days from today to
+	// the reset date (today included; the partial reset-day morning is not
+	// counted as its own day) — e.g. Wed with a Mon reset ⇒ Wed,Thu,Fri,Sat,Sun
+	// = 5. Spending within today's share does not shrink the budget; only
+	// carrying an over/under balance into tomorrow moves it, at the day boundary.
 	todayKey := now.Format("2006-01-02")
 	startUsed := used
 	if d, ok := st.Days[todayKey]; ok {
@@ -295,7 +297,7 @@ func computeOutput(st *State, now time.Time) Output {
 	today0 := time.Date(yr, mo, dy, 0, 0, 0, 0, loc)
 	ey, em, ed := end.Date()
 	reset0 := time.Date(ey, em, ed, 0, 0, 0, 0, loc)
-	daysRemaining := int(math.Round(reset0.Sub(today0).Hours()/24)) + 1
+	daysRemaining := int(math.Round(reset0.Sub(today0).Hours() / 24))
 	if daysRemaining < 1 {
 		daysRemaining = 1
 	}
