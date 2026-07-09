@@ -1,0 +1,9 @@
+# build artifact
+/weekstat
+weekstat
+
+# runtime data (lives under ~/.claude, never commit)
+*.json.tmp
+week-stats.json
+.weekstat-state.json
+.statusline-input.json
