@@ -97,6 +97,8 @@ type Output struct {
 		StartUsedPct   float64 `json:"start_used_pct"`
 		CurrentUsedPct float64 `json:"current_used_pct"`
 		SpentPct       float64 `json:"spent_pct"`
+		BudgetPct      float64 `json:"budget_pct"` // today's allowance (== quota.budget_per_day_pct)
+		LeftPct        float64 `json:"left_pct"`   // budget − spent today (negative = overspent)
 	} `json:"today"`
 	Days []DayOut `json:"days"`
 }
@@ -275,7 +277,29 @@ func computeOutput(st *State, now time.Time) Output {
 	o.Quota.UsedPct = round1(used)
 	o.Quota.RemainingPct = round1(remaining)
 	o.Quota.DaysLeft = round1(daysLeft)
-	o.Quota.BudgetPerDayPct = round1(remaining / daysLeft)
+
+	// Stable daily budget. Instead of "quota left right now / fractional days
+	// left" (which drops the instant you spend anything today and drifts as the
+	// clock ticks), base it on the quota left at the START of today spread over
+	// the WHOLE days remaining (including today). Spending within today's share
+	// therefore does not shrink the budget; only carrying an over/under balance
+	// into tomorrow moves it, recomputed at the next day boundary.
+	todayKey := now.Format("2006-01-02")
+	startUsed := used
+	if d, ok := st.Days[todayKey]; ok {
+		startUsed = d.StartUsed
+	}
+	remainStart := clamp(100-startUsed, 0, 100)
+	loc := now.Location()
+	yr, mo, dy := now.Date()
+	today0 := time.Date(yr, mo, dy, 0, 0, 0, 0, loc)
+	ey, em, ed := end.Date()
+	reset0 := time.Date(ey, em, ed, 0, 0, 0, 0, loc)
+	daysRemaining := int(math.Round(reset0.Sub(today0).Hours()/24)) + 1
+	if daysRemaining < 1 {
+		daysRemaining = 1
+	}
+	o.Quota.BudgetPerDayPct = round1(remainStart / float64(daysRemaining))
 	switch {
 	case used <= o.Window.ElapsedPct:
 		o.Quota.Pace = "on_track"
@@ -286,7 +310,6 @@ func computeOutput(st *State, now time.Time) Output {
 	}
 
 	// current-window breakdown = days tagged with the active window's reset.
-	todayKey := now.Format("2006-01-02")
 	curr := make(map[string]*DayStat)
 	for k, d := range st.Days {
 		if d.WindowEnd == st.WindowEndUnix {
@@ -296,6 +319,7 @@ func computeOutput(st *State, now time.Time) Output {
 	o.Days = buildDays(curr, todayKey)
 
 	o.Today.Date = todayKey
+	o.Today.BudgetPct = o.Quota.BudgetPerDayPct
 	if d, ok := st.Days[todayKey]; ok {
 		o.Today.StartUsedPct = round1(d.StartUsed)
 		o.Today.CurrentUsedPct = round1(d.EndUsed)
@@ -303,6 +327,7 @@ func computeOutput(st *State, now time.Time) Output {
 	} else {
 		o.Today.CurrentUsedPct = round1(used)
 	}
+	o.Today.LeftPct = round1(o.Today.BudgetPct - o.Today.SpentPct)
 	return o
 }
 

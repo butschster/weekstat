@@ -46,7 +46,9 @@ type stats struct {
 		Pace            string  `json:"pace"`
 	} `json:"quota"`
 	Today struct {
-		SpentPct float64 `json:"spent_pct"`
+		SpentPct  float64 `json:"spent_pct"`
+		BudgetPct float64 `json:"budget_pct"`
+		LeftPct   float64 `json:"left_pct"`
 	} `json:"today"`
 }
 
@@ -160,7 +162,7 @@ func update() {
 		label, s.Quota.UsedPct, s.Quota.RemainingPct))
 
 	mVerdict.SetTitle(fmt.Sprintf("%s  %s", glyph, label))
-	mToday.SetTitle(fmt.Sprintf("Today: +%.1f%%", s.Today.SpentPct))
+	mToday.SetTitle(fmt.Sprintf("Today: +%.1f%% of %.1f%%  ·  %.1f%% left", s.Today.SpentPct, s.Today.BudgetPct, s.Today.LeftPct))
 	mBudget.SetTitle(fmt.Sprintf("Budget/day: %.1f%%/d  ·  %.1fd left", s.Quota.BudgetPerDayPct, s.Quota.DaysLeft))
 	mUsed.SetTitle(fmt.Sprintf("Used %.0f%%  ·  left %.0f%%", s.Quota.UsedPct, s.Quota.RemainingPct))
 	mReset.SetTitle(fmt.Sprintf("Resets in %.0f h", s.Window.ResetsInHours))

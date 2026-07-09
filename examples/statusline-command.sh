@@ -126,6 +126,10 @@ if [ -n "$seven_pct" ]; then
   # (delta of used% since the day's first reading; the daemon owns the history).
   # Colour it against the daily budget: red if today already exceeds it.
   today_spent=$(jq -r '.today.spent_pct // empty' "$HOME/.claude/week-stats.json" 2>/dev/null)
+  # Prefer the daemon's STABLE budget/day (start-of-day remaining ÷ whole days
+  # left) over the naive stdin estimate, so today's own spend doesn't move it.
+  ws_budget=$(jq -r '.quota.budget_per_day_pct // empty' "$HOME/.claude/week-stats.json" 2>/dev/null)
+  [ -n "$ws_budget" ] && budget_day=$ws_budget
   tcol='\033[2m'
   if [ -n "$today_spent" ] && [ -n "$budget_day" ]; then
     if   awk "BEGIN{exit !($today_spent > $budget_day)}"       2>/dev/null; then tcol='\033[31m'

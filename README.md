@@ -143,26 +143,49 @@ Example `/stats`:
 
 ## Top-panel indicator (Ubuntu / GNOME)
 
-A small companion app puts a **ring-gauge icon in the top panel** (the arc fills
-with used%, coloured by pace) with a dropdown showing today's spend, budget/day,
-used/left and the reset countdown — so you read the numbers without opening a
-browser. It polls the daemon's `/stats`.
+Read the numbers without opening a browser. A small companion app puts a
+**ring-gauge icon in the top panel**: the arc fills with **used%** and is coloured
+by pace (Okabe-Ito, colorblind-safe).
+
+![tray ring icons](docs/tray-icons.png)
+
+*Left → right: on track (green), slightly over (amber), over budget (red).*
 
 ```bash
 ./install.sh --tray          # build + autostart the indicator
 ```
 
-It's a **separate Go module** (`tray/`) so the daemon stays dependency-free — the
-tray needs a DBus StatusNotifierItem (`fyne.io/systray`). Requirements: GNOME with
-the **AppIndicator** extension (default on Ubuntu) and the Ayatana typelib:
+**Click it → dropdown** with the live figures (polled from `/stats` every 15s):
+
+| Item | Example |
+|------|---------|
+| Pace verdict | `✓ on track` |
+| Today | `Today: +2.0% of 12.8%  ·  10.8% left` |
+| Budget/day | `Budget/day: 12.8%/d  ·  5.1d left` |
+| Used / left | `Used 25%  ·  left 75%` |
+| Resets | `Resets in 123 h` |
+| Actions | `Open dashboard` · `Refresh now` · `Quit` |
+
+"Today" is measured against **today's own allowance** (the stable budget/day), so
+you see at a glance whether you're within your slice for the day and how much of
+it is left — without the future days' budget moving.
+
+**Reopen after Quit:** the installer adds a launcher to the app menu, so search
+“weekstat” in Activities. Or run it manually:
+`~/.claude/tools/weekstat/weekstat-tray --addr 127.0.0.1:7457`.
+
+**How it works / requirements.** It's a **separate Go module** (`tray/`) so the
+daemon stays dependency-free — the tray needs a DBus StatusNotifierItem
+(`fyne.io/systray`). It requires GNOME with the **AppIndicator** extension
+(default on Ubuntu) and the Ayatana typelib:
 
 ```bash
 sudo apt install gir1.2-ayatanaappindicator3-0.1   # if the icon doesn't appear
 ```
 
-The installer adds a launcher to the app menu, so after **Quit** you can reopen it
-by searching “weekstat” in Activities. Run manually:
-`~/.claude/tools/weekstat/weekstat-tray --addr 127.0.0.1:7457`.
+The ring icon is hand-drawn in Go (`image/png`) — no icon assets, no external
+libraries. On Wayland the panel may also show the used% as a text label next to
+the icon, depending on the shell.
 
 ---
 
