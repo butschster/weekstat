@@ -19,6 +19,8 @@ per day to make it last until the reset, and a per-day breakdown.
 
 Plus an HTTP dashboard you can drop in on: **http://127.0.0.1:7457/**
 
+![weekstat dashboard](docs/dashboard.png)
+
 ---
 
 ## How it works
@@ -31,14 +33,14 @@ Claude Code ──stdin(JSON)──▶ statusline script
                           weekstat (daemon)  ── watches the file, every 5s
                                  │
                                  ├─▶ ~/.claude/week-stats.json  ◀── statusline reads "today"
-                                 └─▶ HTTP :7457  (dashboard + /stats + /healthz)
+                                 └─▶ HTTP :7457  (dashboard + /stats + /history + /healthz)
 ```
 
 Claude Code only exposes `rate_limits.seven_day.used_percentage` and `resets_at`
 on the statusline's stdin — ephemeral data on every render. The daemon builds
 history from it: it records used% at the start of each day and computes deltas,
-plus the boundaries of the weekly window (on reset the finished window moves to
-`previous`).
+tags every day with the window it belongs to, and keeps a rolling multi-window
+daily history that feeds `/history` and the dashboard charts.
 
 > Works only on subscription plans (Pro/Max) where Claude Code sends
 > `rate_limits`. On a pure API plan that field is absent.
@@ -120,15 +122,16 @@ in `examples/` does both.
 
 | URL | Returns |
 |-----|---------|
-| `GET /` | HTML dashboard (auto-refresh 10s): window, cards, per-day breakdown, previous window |
-| `GET /stats` | The same snapshot as JSON (`week-stats.json`) |
+| `GET /` | Live self-contained dashboard: hero verdict, evidence bar, cumulative-burn chart (vs. ideal corridor) and a 30-day consumption chart. Polls JSON and updates in place — no page reload. |
+| `GET /stats` | Current snapshot as JSON (also written to `week-stats.json`) |
+| `GET /history?days=N` | Daily time-series that feeds the charts (default 30, max 365) |
 | `GET /healthz` | `ok` |
 
 Example `/stats`:
 
 ```json
 {
-  "version": "v1.0.0",
+  "version": "v1.1.0",
   "window":  { "start": "2026-07-07 12:00", "end": "2026-07-14 12:00", "resets_in_hours": 123.5, "elapsed_pct": 26.5 },
   "quota":   { "used_pct": 23, "remaining_pct": 77, "budget_per_day_pct": 15, "days_left": 5.1, "pace": "on_track" },
   "today":   { "date": "2026-07-09", "start_used_pct": 23, "current_used_pct": 27, "spent_pct": 4 },

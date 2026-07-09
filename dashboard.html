@@ -1,0 +1,806 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>weekstat · weekly quota</title>
+<style>
+  :root{
+    color-scheme: dark;
+    /* Warm-neutral surface ramp */
+    --base:#0C0D10;
+    --surface:#141519;
+    --surface-2:#1A1B20;
+    --track:#212327;
+    --hairline:#26282E;
+    --text-hi:#F2F3F5;
+    --text-mid:#8A8F99;
+    --text-lo:#5A5F6A;
+    /* Owned signature accent — a warm amber-gold, explicitly NOT #3b82f6 */
+    --accent:#C9A24B;
+    --accent-dim:#5c4d28;
+    /* Okabe-Ito pace palette */
+    --on:#009E73;
+    --slight:#E69F00;
+    --over:#D55E00;
+    --state:var(--on);
+    --state-dim:#0c3b2c;
+    --radius:14px;
+    --radius-sm:10px;
+    --mono:ui-monospace,'SF Mono','JetBrains Mono',Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{max-width:100%;overflow-x:hidden;}
+  body{
+    margin:0;
+    font:14px/1.55 var(--sans);
+    background:var(--base);
+    color:var(--text-hi);
+    padding:22px 20px 40px;
+    -webkit-font-smoothing:antialiased;
+  }
+  .num{font-family:var(--mono);font-variant-numeric:tabular-nums lining-nums;}
+  .wrap{max-width:960px;margin:0 auto;}
+
+  /* Masthead */
+  header.mast{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px;}
+  .wordmark{display:flex;align-items:baseline;gap:9px;}
+  .wordmark .logo{
+    font-family:var(--mono);font-weight:650;font-size:15px;letter-spacing:.02em;
+    color:var(--text-hi);
+    border:1px solid var(--hairline);border-radius:8px;padding:3px 9px;background:var(--surface);
+  }
+  .wordmark .logo b{color:var(--accent);font-weight:650;}
+  .wordmark .tag{font-size:11.5px;color:var(--text-lo);letter-spacing:.04em;text-transform:uppercase;}
+  h1.srt{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;}
+  .mast-right{display:flex;align-items:center;gap:14px;}
+  .updated{font-size:11.5px;color:var(--text-lo);}
+  .updated .num{color:var(--text-mid);}
+
+  /* Live toggle */
+  .live-toggle{
+    display:inline-flex;align-items:center;gap:7px;cursor:pointer;user-select:none;
+    font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--text-mid);
+    background:var(--surface);border:1px solid var(--hairline);border-radius:999px;padding:4px 11px 4px 9px;
+  }
+  .live-toggle .dot{width:8px;height:8px;border-radius:50%;background:var(--on);box-shadow:0 0 0 0 rgba(0,158,115,.5);}
+  .live-toggle.live .dot{animation:pulse 2.4s ease-out infinite;}
+  .live-toggle.paused .dot{background:var(--text-lo);animation:none;}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(0,158,115,.45);}70%{box-shadow:0 0 0 6px rgba(0,158,115,0);}100%{box-shadow:0 0 0 0 rgba(0,158,115,0);}}
+
+  /* Reconnect / stale banner */
+  .banner{
+    display:none;align-items:center;gap:9px;margin-bottom:16px;padding:9px 14px;
+    background:var(--surface);border:1px solid var(--hairline);border-left:3px solid var(--text-lo);
+    border-radius:var(--radius-sm);color:var(--text-mid);font-size:12.5px;
+  }
+  .banner.show{display:flex;}
+  .banner .num{color:var(--text-hi);}
+  .banner .spin{width:11px;height:11px;border-radius:50%;border:2px solid var(--hairline);border-top-color:var(--text-mid);animation:spin 1s linear infinite;flex:none;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  /* Alarm banner (over budget) */
+  .alarm{
+    display:none;align-items:center;gap:10px;margin-bottom:16px;padding:11px 15px;
+    background:rgba(213,94,0,.10);border:1px solid rgba(213,94,0,.4);border-left:3px solid var(--over);
+    border-radius:var(--radius-sm);color:#F2C9AC;font-size:13px;font-weight:500;
+  }
+  .alarm.show{display:flex;}
+  .alarm svg{flex:none;}
+
+  /* ===== HERO VERDICT ===== */
+  .hero{
+    position:relative;display:flex;align-items:center;gap:22px;
+    min-height:132px;padding:22px 26px 22px 24px;margin-bottom:14px;
+    background:var(--surface);border:1px solid var(--hairline);
+    border-left:6px solid var(--state);border-radius:var(--radius);
+    overflow:hidden;
+  }
+  .hero::after{content:"";position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(120% 140% at 0% 50%, color-mix(in srgb, var(--state) 9%, transparent), transparent 60%);}
+  .hero-glyph{flex:none;width:64px;height:64px;position:relative;z-index:1;}
+  .hero-glyph svg{width:100%;height:100%;}
+  .hero-main{position:relative;z-index:1;min-width:0;flex:1;}
+  .hero-word{
+    font-size:42px;line-height:1.02;font-weight:650;letter-spacing:-.01em;
+    color:var(--state);margin:0 0 6px;font-family:var(--sans);
+  }
+  .hero-clause{font-size:14.5px;color:var(--text-mid);line-height:1.45;max-width:52ch;}
+  .hero-clause .num{color:var(--text-hi);}
+  .hero-action{
+    flex:none;position:relative;z-index:1;text-align:right;padding-left:16px;
+    border-left:1px solid var(--hairline);align-self:stretch;display:flex;flex-direction:column;justify-content:center;
+  }
+  .hero-action .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-lo);margin-bottom:4px;}
+  .hero-action .big{font-size:30px;font-weight:650;color:var(--text-hi);line-height:1;}
+  .hero-action .big .u{font-size:.5em;color:var(--text-mid);margin-left:1px;}
+  .hero-action .sub{font-size:11.5px;color:var(--text-lo);margin-top:4px;}
+
+  .u{font-size:.5em;color:var(--text-mid);}
+
+  /* ===== EVIDENCE BAR ===== */
+  .evidence{margin-bottom:20px;padding:0 2px;}
+  .ev-track{
+    position:relative;height:26px;border-radius:8px;background:var(--track);
+    border:1px solid var(--hairline);overflow:hidden;
+  }
+  .ev-fill{position:absolute;left:0;top:0;bottom:0;background:var(--state);border-radius:8px 0 0 8px;
+    transition:width .3s cubic-bezier(.4,0,.2,1),background-color .3s;width:0;}
+  .ev-tick{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--text-hi);opacity:.85;transition:left .3s;z-index:2;}
+  .ev-tick::after{content:"ideal";position:absolute;top:-15px;left:50%;transform:translateX(-50%);
+    font-size:9.5px;color:var(--text-mid);letter-spacing:.04em;white-space:nowrap;font-family:var(--sans);}
+  .ev-row{display:flex;justify-content:space-between;align-items:baseline;margin-top:6px;font-size:11.5px;color:var(--text-lo);}
+  .ev-row .left{color:var(--text-mid);}
+  .ev-row .right{color:var(--text-mid);}
+  .ev-row .num{color:var(--text-hi);}
+
+  /* ===== SUPPORTING METRICS ===== */
+  .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:26px;}
+  .card{background:var(--surface);border:1px solid var(--hairline);border-radius:var(--radius-sm);padding:13px 15px;min-width:0;}
+  .card .k{font-size:10.5px;text-transform:uppercase;letter-spacing:.055em;color:var(--text-mid);margin-bottom:7px;}
+  .card .v{font-size:22px;font-weight:600;color:var(--text-hi);line-height:1;}
+  .card .v .u{font-size:.5em;}
+  .card .meta{font-size:11px;color:var(--text-lo);margin-top:6px;}
+  .card .meta .num{color:var(--text-mid);}
+
+  /* Number change flash */
+  .flash{animation:flash .6s ease-out;}
+  @keyframes flash{0%{color:var(--accent);}100%{color:inherit;}}
+
+  /* ===== CHART SECTIONS ===== */
+  section.chart{margin-bottom:26px;}
+  .sec-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:9px;}
+  .sec-head h2{font-size:13px;font-weight:600;letter-spacing:.01em;color:var(--text-hi);margin:0;}
+  .sec-head .hint{font-size:11px;color:var(--text-lo);}
+  .chart-frame{
+    background:var(--surface);border:1px solid var(--hairline);border-radius:var(--radius);
+    padding:14px 14px 10px;position:relative;
+  }
+  .scroll-x{overflow-x:auto;overflow-y:hidden;}
+  .scroll-x svg{display:block;}
+  .collecting{
+    font-size:12px;color:var(--text-mid);margin-top:8px;padding:7px 11px;
+    background:var(--surface-2);border:1px dashed var(--hairline);border-radius:8px;display:inline-block;
+  }
+  .collecting .num{color:var(--text-hi);}
+
+  /* Legend */
+  .legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:10px;font-size:11px;color:var(--text-mid);}
+  .legend span{display:inline-flex;align-items:center;gap:6px;}
+  .legend i{width:14px;height:0;border-top-width:3px;border-top-style:solid;display:inline-block;border-radius:2px;}
+  .legend .sw{width:12px;height:12px;border-radius:3px;display:inline-block;}
+
+  /* SVG tooltip */
+  .svg-tip{
+    position:absolute;pointer-events:none;z-index:5;opacity:0;transition:opacity .12s;
+    background:#000;border:1px solid var(--hairline);border-radius:7px;padding:6px 9px;
+    font-size:11.5px;color:var(--text-hi);white-space:nowrap;transform:translate(-50%,-120%);
+    box-shadow:0 4px 16px rgba(0,0,0,.5);
+  }
+  .svg-tip.show{opacity:1;}
+  .svg-tip .num{color:var(--accent);}
+
+  /* Visually-hidden data table fallback */
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
+
+  .foot{color:var(--text-lo);font-size:11.5px;margin-top:28px;border-top:1px solid var(--hairline);padding-top:14px;}
+  .foot a{color:var(--text-mid);text-decoration:none;}
+  .foot a:hover{color:var(--text-hi);}
+
+  /* SVG element classes */
+  .axis-label{fill:var(--text-lo);font-family:var(--mono);font-size:10px;}
+  .axis-title{fill:var(--text-mid);font-family:var(--sans);font-size:10.5px;}
+  .gridline{stroke:var(--hairline);stroke-width:1;}
+  .reset-rule{stroke:var(--accent);stroke-width:1;stroke-dasharray:3 3;opacity:.65;}
+  .reset-label{fill:var(--accent);font-family:var(--sans);font-size:9.5px;}
+
+  /* Skeleton */
+  .skeleton .skel{background:linear-gradient(90deg,var(--surface) 25%,var(--surface-2) 37%,var(--surface) 63%);
+    background-size:400% 100%;animation:shimmer 1.4s ease infinite;border-radius:8px;}
+  @keyframes shimmer{0%{background-position:100% 0;}100%{background-position:-100% 0;}}
+
+  /* Responsive */
+  @media (max-width:640px){
+    body{padding:16px 13px 32px;}
+    .hero{flex-wrap:wrap;gap:14px;min-height:0;padding:18px;}
+    .hero-glyph{width:48px;height:48px;}
+    .hero-word{font-size:34px;}
+    .hero-action{border-left:0;padding-left:0;text-align:left;width:100%;flex-direction:row;align-items:baseline;gap:8px;}
+    .hero-action .big{font-size:26px;}
+    .cards{grid-template-columns:1fr;}
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    *{animation:none!important;transition:none!important;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="mast">
+    <div class="wordmark">
+      <span class="logo">week<b>stat</b></span>
+      <span class="tag">weekly quota</span>
+    </div>
+    <h1 class="srt">Claude Code weekly quota dashboard</h1>
+    <div class="mast-right">
+      <span class="updated" id="updated">updated —</span>
+      <span class="live-toggle live" id="liveToggle" role="button" tabindex="0" aria-pressed="true" title="Pause / resume live updates">
+        <span class="dot"></span><span id="liveLabel">Live</span>
+      </span>
+    </div>
+  </header>
+
+  <div class="banner" id="banner" aria-live="polite">
+    <span class="spin"></span>
+    <span>Reconnecting… last updated <span class="num" id="banner-ago">0m</span> ago</span>
+  </div>
+
+  <div class="alarm" id="alarm" role="alert">
+    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 L22 20 H2 Z" fill="none" stroke="#D55E00" stroke-width="2" stroke-linejoin="round"/><line x1="12" y1="9" x2="12" y2="14" stroke="#D55E00" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17.2" r="1.2" fill="#D55E00"/></svg>
+    <span>Over budget — at today's rate you'll exhaust the weekly quota before it resets.</span>
+  </div>
+
+  <main>
+    <!-- HERO VERDICT -->
+    <section class="hero" id="hero" aria-live="polite" aria-atomic="true" aria-labelledby="hero-word">
+      <div class="hero-glyph" id="hero-glyph" aria-hidden="true"></div>
+      <div class="hero-main">
+        <p class="hero-word" id="hero-word">—</p>
+        <p class="hero-clause" id="hero-clause">Loading weekly quota…</p>
+      </div>
+      <div class="hero-action">
+        <div class="lbl">budget / day</div>
+        <div class="big"><span class="num" id="hero-budget">–</span><span class="u">%/d</span></div>
+        <div class="sub">for <span class="num" id="hero-daysleft">–</span> days</div>
+      </div>
+    </section>
+
+    <!-- EVIDENCE BAR -->
+    <section class="evidence" aria-label="Used versus ideal pace">
+      <div class="ev-track">
+        <div class="ev-fill" id="ev-fill"></div>
+        <div class="ev-tick" id="ev-tick" title="ideal pace"></div>
+      </div>
+      <div class="ev-row">
+        <span class="left"><span class="num" id="ev-used">0</span><span class="u">%</span> used · week <span class="num" id="ev-elapsed">0</span><span class="u">%</span> gone</span>
+        <span class="right"><span class="num" id="ev-left">100</span><span class="u">%</span> left</span>
+      </div>
+    </section>
+
+    <!-- SUPPORTING METRICS -->
+    <section class="cards" aria-label="Supporting metrics">
+      <div class="card">
+        <div class="k">Today</div>
+        <div class="v">+<span class="num" id="m-today">0</span><span class="u">%</span></div>
+        <div class="meta">burned since midnight</div>
+      </div>
+      <div class="card">
+        <div class="k">Budget / day</div>
+        <div class="v"><span class="num" id="m-budget">0</span><span class="u">%/d</span></div>
+        <div class="meta">for <span class="num" id="m-daysleft">0</span> days left</div>
+      </div>
+      <div class="card">
+        <div class="k">Used</div>
+        <div class="v"><span class="num" id="m-used">0</span><span class="u">%</span></div>
+        <div class="meta">of weekly quota</div>
+      </div>
+    </section>
+
+    <!-- CHART B — PRIMARY: cumulative burn vs ideal corridor -->
+    <section class="chart" aria-labelledby="chartB-h">
+      <div class="sec-head">
+        <h2 id="chartB-h">Cumulative burn — this window</h2>
+        <span class="hint" id="chartB-hint">0 → 168 h · vs ideal-pace corridor</span>
+      </div>
+      <div class="chart-frame">
+        <div class="scroll-x">
+          <svg id="chartB" width="912" height="300" viewBox="0 0 912 300" role="img" aria-labelledby="chartB-title chartB-desc" preserveAspectRatio="xMidYMid meet">
+            <title id="chartB-title">Cumulative quota used across the current 7-day window</title>
+            <desc id="chartB-desc">Line chart. X axis is hours into the window from 0 to 168. Y axis is percent of quota used from 0 to 100. A shaded corridor shows the ideal pace band; the actual burn line and a projection to window end are drawn against it.</desc>
+          </svg>
+        </div>
+        <div class="collecting" id="chartB-collect" style="display:none" aria-live="polite"></div>
+        <div class="legend">
+          <span><i style="border-top-color:var(--accent)"></i>Actual burn</span>
+          <span><i style="border-top-color:var(--state);border-top-style:dashed" id="legB-proj"></i>Projection</span>
+          <span><span class="sw" style="background:color-mix(in srgb,var(--text-mid) 22%,transparent)"></span>Ideal corridor</span>
+        </div>
+      </div>
+      <table class="sr-only" id="chartB-table"><caption>Cumulative used percent by hour into current window</caption>
+        <thead><tr><th>Hours into window</th><th>Used %</th></tr></thead><tbody></tbody></table>
+    </section>
+
+    <!-- CHART A — SECONDARY: 30-day daily consumption columns -->
+    <section class="chart" aria-labelledby="chartA-h">
+      <div class="sec-head">
+        <h2 id="chartA-h">Daily consumption — last 30 days</h2>
+        <span class="hint">% of quota spent per day</span>
+      </div>
+      <div class="chart-frame">
+        <div class="scroll-x">
+          <svg id="chartA" width="912" height="220" viewBox="0 0 912 220" role="img" aria-labelledby="chartA-title chartA-desc" preserveAspectRatio="xMidYMid meet">
+            <title id="chartA-title">Daily quota consumption over the last 30 days</title>
+            <desc id="chartA-desc">Column chart. Each column is one day's percent of quota consumed. Missing days show no column. Vertical dashed rules mark weekly quota resets. Today is highlighted.</desc>
+          </svg>
+        </div>
+        <div class="collecting" id="chartA-collect" style="display:none" aria-live="polite"></div>
+        <div class="legend">
+          <span><span class="sw" style="background:var(--accent)"></span>Today</span>
+          <span><span class="sw" style="background:var(--text-lo);opacity:.55"></span>Weekend</span>
+          <span><i style="border-top-color:var(--accent);border-top-style:dashed"></i>⟲ Reset</span>
+        </div>
+      </div>
+      <table class="sr-only" id="chartA-table"><caption>Percent of quota spent each day, last 30 days</caption>
+        <thead><tr><th>Date</th><th>Spent %</th></tr></thead><tbody></tbody></table>
+    </section>
+  </main>
+
+  <div class="foot">
+    weekstat <span class="num" id="foot-ver">v1.0.0</span> · JSON API:
+    <a href="/stats">/stats</a> · <a href="/history?days=30">/history</a> · health: <a href="/healthz">/healthz</a>
+    <span id="foot-window"></span>
+  </div>
+</div>
+
+<div class="svg-tip" id="tipB"></div>
+<div class="svg-tip" id="tipA"></div>
+
+<script>
+"use strict";
+(function(){
+  const SVGNS="http://www.w3.org/2000/svg";
+  const POLL_MS=10000;
+  const WINDOW_H=168;
+  const PACE={
+    on_track:   {word:"ON TRACK",     color:"var(--on)",     dim:"#0c3b2c", raw:"#009E73", glyph:"check",    clause:"on track"},
+    slightly_over:{word:"SLIGHTLY OVER", color:"var(--slight)", dim:"#4a3400", raw:"#E69F00", glyph:"triangle", clause:"a little ahead of pace"},
+    over_budget:{word:"OVER BUDGET",  color:"var(--over)",   dim:"#4a2200", raw:"#D55E00", glyph:"octagon",  clause:"over budget"}
+  };
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // ---- State ----
+  let stats=null, history=null;
+  let live=true, lastOk=null, connected=true, timer=null;
+  const prev={}; // previous displayed values for flash + diffing
+
+  const $=id=>document.getElementById(id);
+  const fmt=(n,d=0)=>{ if(n===null||n===undefined||isNaN(n)) return "–"; const v=Number(n); return (d? v.toFixed(d): Math.round(v)).toString(); };
+  const cssVar=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+  // ---- Glyphs (encode status by shape) ----
+  function glyphSVG(kind,color){
+    if(kind==="check")
+      return `<svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="21" fill="none" stroke="${color}" stroke-width="3"/><path d="M15 25 l6 6 l12 -14" fill="none" stroke="${color}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    if(kind==="triangle")
+      return `<svg viewBox="0 0 48 48"><path d="M24 5 L45 42 H3 Z" fill="none" stroke="${color}" stroke-width="3" stroke-linejoin="round"/><line x1="24" y1="19" x2="24" y2="30" stroke="${color}" stroke-width="4" stroke-linecap="round"/><circle cx="24" cy="36" r="2.4" fill="${color}"/></svg>`;
+    // octagon
+    const p="M16 4 L32 4 L44 16 L44 32 L32 44 L16 44 L4 32 L4 16 Z";
+    return `<svg viewBox="0 0 48 48"><path d="${p}" fill="none" stroke="${color}" stroke-width="3" stroke-linejoin="round"/><line x1="17" y1="17" x2="31" y2="31" stroke="${color}" stroke-width="4" stroke-linecap="round"/><line x1="31" y1="17" x2="17" y2="31" stroke="${color}" stroke-width="4" stroke-linecap="round"/></svg>`;
+  }
+
+  // ---- Number set + flash on change ----
+  function setNum(id,val){
+    const el=$(id); if(!el) return;
+    const s=String(val);
+    if(el.textContent!==s){
+      if(prev[id]!==undefined && !reduceMotion){ el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); }
+      el.textContent=s;
+      prev[id]=s;
+    }
+  }
+  function setText(id,val){ const el=$(id); if(el && el.textContent!==val) el.textContent=val; }
+
+  // ============ RENDER STATS ============
+  function renderStats(){
+    if(!stats) return;
+    const q=stats.quota||{}, w=stats.window||{}, t=stats.today||{};
+    const paceKey = PACE[q.pace] ? q.pace : "on_track";
+    const p=PACE[paceKey];
+    const used = num(q.used_pct), left = num(q.remaining_pct, 100-used), elapsed=num(w.elapsed_pct);
+    const budget = num(q.budget_per_day_pct), daysLeft=num(q.days_left);
+    const todaySpent=num(t.spent_pct);
+
+    // state color propagation
+    document.documentElement.style.setProperty("--state", p.color);
+    document.documentElement.style.setProperty("--state-dim", p.dim);
+
+    // Hero
+    $("hero-glyph").innerHTML = glyphSVG(p.glyph, p.raw);
+    setText("hero-word", p.word);
+    setNum("hero-budget", fmt(budget,1));
+    setNum("hero-daysleft", fmt(daysLeft,1));
+
+    // Plain-english clause
+    let clause;
+    if(!stats.has_data){
+      clause = "Collecting data — the window just started.";
+    } else {
+      const delta = used - elapsed;
+      const rel = Math.abs(delta) < 1.5 ? "right on pace"
+                : delta < 0 ? "under pace" : "ahead of pace";
+      clause = `You've used <span class="num">${fmt(used)}</span>% and the week is <span class="num">${fmt(elapsed)}</span>% gone — ${rel}, ${p.clause}.`;
+    }
+    $("hero-clause").innerHTML = clause;
+
+    // Evidence bar
+    animWidth($("ev-fill"), clamp(used,0,100));
+    $("ev-tick").style.left = clamp(elapsed,0,100)+"%";
+    setNum("ev-used", fmt(used)); setNum("ev-elapsed", fmt(elapsed)); setNum("ev-left", fmt(left));
+
+    // Cards
+    setNum("m-today", fmt(todaySpent, todaySpent%1?1:0));
+    setNum("m-budget", fmt(budget,1));
+    setNum("m-daysleft", fmt(daysLeft,1));
+    setNum("m-used", fmt(used));
+
+    // Alarm banner + title
+    const over = paceKey==="over_budget";
+    $("alarm").classList.toggle("show", over && stats.has_data);
+    const baseTitle="weekstat · weekly quota";
+    document.title = over ? "⚠ "+baseTitle : baseTitle;
+
+    // updated + version + window footer
+    if(stats.updated_at) setText("updated", "updated "+stats.updated_at);
+    if(stats.version) setText("foot-ver", stats.version);
+    if(w.start && w.end){
+      setText("foot-window", ` · window ${w.start} → ${w.end} · resets in ${fmt(w.resets_in_hours,1)} h`);
+    }
+
+    // redraw Chart B head (depends on live stats)
+    if(history) drawChartB();
+  }
+  function num(v,def=0){ return (v===null||v===undefined||isNaN(v))? def : Number(v); }
+  function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
+  function animWidth(el,pct){ el.style.width=pct+"%"; }
+
+  // ============ CHART B — cumulative burn vs corridor ============
+  const B={w:912,h:300,ml:44,mr:16,mt:16,mb:34};
+  function drawChartB(){
+    const svg=$("chartB");
+    while(svg.lastChild && svg.lastChild.nodeName!=="title" && svg.lastChild.nodeName!=="desc") svg.removeChild(svg.lastChild);
+    const plotW=B.w-B.ml-B.mr, plotH=B.h-B.mt-B.mb;
+    const x=h=> B.ml + (clamp(h,0,WINDOW_H)/WINDOW_H)*plotW;
+    const y=v=> B.mt + (1-clamp(v,0,100)/100)*plotH;
+
+    const q=(stats&&stats.quota)||{}, w=(stats&&stats.window)||{};
+    const half = clamp(num(q.budget_per_day_pct,3),1,12); // corridor half-width in %
+    const state = PACE[q.pace]?q.pace:"on_track";
+    const stateRaw = PACE[state].raw;
+    const accent = cssVar("--accent")||"#C9A24B";
+
+    const g=el=>document.createElementNS(SVGNS,el);
+    const add=(el,attrs)=>{ const e=g(el); for(const k in attrs) e.setAttribute(k,attrs[k]); svg.appendChild(e); return e; };
+
+    // --- gridlines + y ticks ---
+    for(let v=0;v<=100;v+=25){
+      add("line",{x1:B.ml,y1:y(v),x2:B.w-B.mr,y2:y(v),class:"gridline"});
+      const tx=g("text"); tx.setAttribute("x",B.ml-8); tx.setAttribute("y",y(v)+3);
+      tx.setAttribute("text-anchor","end"); tx.setAttribute("class","axis-label"); tx.textContent=v;
+      svg.appendChild(tx);
+    }
+    // x ticks each 24h (day markers)
+    for(let hh=0;hh<=WINDOW_H;hh+=24){
+      const tx=g("text"); tx.setAttribute("x",x(hh)); tx.setAttribute("y",B.h-B.mb+16);
+      tx.setAttribute("text-anchor","middle"); tx.setAttribute("class","axis-label"); tx.textContent="d"+(hh/24);
+      svg.appendChild(tx);
+      add("line",{x1:x(hh),y1:B.mt,x2:x(hh),y2:B.h-B.mb,class:"gridline",opacity:.4});
+    }
+    // axis titles
+    const at=g("text"); at.setAttribute("x",B.ml); at.setAttribute("y",B.h-4); at.setAttribute("class","axis-title"); at.textContent="hours into window (days)"; svg.appendChild(at);
+
+    // --- ideal corridor band ---
+    // ideal(t)=100*t/168 ; band = ideal ± half, clipped to [0,100]
+    const N=48, upper=[], lower=[], center=[];
+    for(let i=0;i<=N;i++){
+      const hh=(i/N)*WINDOW_H, ideal=100*hh/WINDOW_H;
+      upper.push([x(hh), y(clamp(ideal+half,0,100))]);
+      lower.push([x(hh), y(clamp(ideal-half,0,100))]);
+      center.push([x(hh), y(clamp(ideal,0,100))]);
+    }
+    let band="M"+upper.map(p=>p[0]+","+p[1]).join(" L");
+    for(let i=lower.length-1;i>=0;i--) band+=" L"+lower[i][0]+","+lower[i][1];
+    band+=" Z";
+    add("path",{d:band,fill:"color-mix(in srgb, var(--text-mid) 16%, transparent)",stroke:"none"});
+    add("path",{d:"M"+center.map(p=>p[0]+","+p[1]).join(" L"),fill:"none",stroke:"var(--text-lo)","stroke-width":1,"stroke-dasharray":"4 5",opacity:.7});
+
+    // --- build actual series from history current-window records + live head ---
+    const curWinId = w && w.end ? String(w.end).slice(0,10) : null;
+    let pts=[];
+    if(history && Array.isArray(history.records)){
+      history.records.forEach(r=>{
+        if(curWinId && r.window_id===curWinId){
+          pts.push([num(r.window_elapsed_h), num(r.used_pct_eod)]);
+        }
+      });
+    }
+    // live head
+    const headH = clamp(num(w.elapsed_pct)/100*WINDOW_H,0,WINDOW_H);
+    const headV = clamp(num(q.used_pct),0,100);
+    pts.push([headH, headV]);
+    // start anchor at origin
+    pts.unshift([0,0]);
+    // sort + monotonic-x + monotonic-y (cumulative never decreases)
+    pts.sort((a,b)=>a[0]-b[0]);
+    let maxV=0; const mono=[];
+    for(const p of pts){ const vv=Math.max(maxV,p[1]); maxV=vv; if(mono.length && mono[mono.length-1][0]===p[0]) mono[mono.length-1][1]=vv; else mono.push([p[0],vv]); }
+
+    // draw actual as segments, recolor + glyph when above upper band
+    const idealAt=hh=>100*hh/WINDOW_H;
+    for(let i=1;i<mono.length;i++){
+      const a=mono[i-1], b=mono[i];
+      const midH=(a[0]+b[0])/2, midV=(a[1]+b[1])/2;
+      const above = midV > idealAt(midH)+half;
+      const col = above? stateRaw : accent;
+      const ln=add("path",{d:`M${x(a[0])},${y(a[1])} L${x(b[0])},${y(b[1])}`,fill:"none",stroke:col,"stroke-width":2.4,"stroke-linecap":"round","stroke-linejoin":"round"});
+      if(above){
+        // small triangle glyph at segment mid
+        const gx=x(midH), gy=y(midV)-8;
+        add("path",{d:`M${gx},${gy-5} L${gx+4.5},${gy+3} L${gx-4.5},${gy+3} Z`,fill:stateRaw,opacity:.9});
+      }
+    }
+    // draw-on animation
+    if(!reduceMotion){
+      const paths=svg.querySelectorAll('path[stroke]');
+    }
+
+    // --- projection ray from head at current rate to window end ---
+    if(stats && stats.has_data && headH>0.5){
+      const rate = headV/headH; // %/h so far
+      const endV = rate*WINDOW_H;
+      const projColor = PACE[state].raw;
+      const clampEndV=clamp(endV,0,100);
+      add("path",{d:`M${x(headH)},${y(headV)} L${x(WINDOW_H)},${y(clampEndV)}`,fill:"none",stroke:projColor,"stroke-width":1.6,"stroke-dasharray":"5 5",opacity:.8});
+      // projected exhaustion zone if endV>100 (reaches 100 before end)
+      if(endV>100){
+        const hitH = 100/rate; // hours where projection reaches 100
+        if(hitH<WINDOW_H){
+          add("rect",{x:x(hitH),y:B.mt,width:x(WINDOW_H)-x(hitH),height:plotH,fill:"color-mix(in srgb, var(--over) 12%, transparent)"});
+          add("line",{x1:x(hitH),y1:B.mt,x2:x(hitH),y2:B.mt+plotH,stroke:PACE.over_budget.raw,"stroke-width":1,"stroke-dasharray":"2 3",opacity:.7});
+          const et=g("text"); et.setAttribute("x",clamp(x(hitH)+5,B.ml,B.w-B.mr-70)); et.setAttribute("y",B.mt+13);
+          et.setAttribute("class","reset-label"); et.setAttribute("fill",PACE.over_budget.raw); et.textContent="projected exhaustion";
+          svg.appendChild(et);
+        }
+      }
+    }
+
+    // --- head dot ---
+    add("circle",{cx:x(headH),cy:y(headV),r:5,fill:accent,stroke:"var(--base)","stroke-width":2});
+    add("circle",{cx:x(headH),cy:y(headV),r:9,fill:"none",stroke:accent,"stroke-width":1,opacity:.35});
+
+    // hint text
+    setText("chartB-hint", `0 → 168 h · corridor ±${fmt(half,1)}%/d`);
+
+    // collecting caption + sparse state
+    const dayN = Math.max(1,Math.ceil(num(w.elapsed_pct)/100*7));
+    const cb=$("chartB-collect");
+    if(!stats.has_data || mono.length<=2){
+      cb.style.display="inline-block";
+      cb.innerHTML = `Collecting data — day <span class="num">${dayN}</span> of 7. Pre-data hours show as gaps.`;
+    } else cb.style.display="none";
+
+    // a11y data table
+    const tb=$("chartB-table").querySelector("tbody"); tb.innerHTML="";
+    mono.forEach(p=>{ const tr=document.createElement("tr");
+      tr.innerHTML=`<td>${fmt(p[0],1)}</td><td>${fmt(p[1],1)}</td>`; tb.appendChild(tr); });
+
+    setupTipB(svg, mono, x, y);
+  }
+
+  function setupTipB(svg, mono, x, y){
+    const tip=$("tipB"); const frame=svg.closest(".chart-frame");
+    svg.onmousemove=e=>{
+      const r=svg.getBoundingClientRect();
+      const scaleX=B.w/r.width;
+      const px=(e.clientX-r.left)*scaleX;
+      const hh=clamp((px-B.ml)/(B.w-B.ml-B.mr)*WINDOW_H,0,WINDOW_H);
+      // nearest point by x
+      let best=mono[0], bd=1e9;
+      for(const p of mono){ const d=Math.abs(p[0]-hh); if(d<bd){bd=d;best=p;} }
+      const fr=frame.getBoundingClientRect();
+      tip.style.left=(x(best[0])/scaleX + (r.left-fr.left))+"px";
+      tip.style.top=(y(best[1])/scaleX + (r.top-fr.top))+"px";
+      tip.innerHTML=`<span class="num">${fmt(best[0],0)}h</span> · <span class="num">${fmt(best[1],1)}%</span> used`;
+      tip.classList.add("show");
+    };
+    svg.onmouseleave=()=>tip.classList.remove("show");
+  }
+
+  // ============ CHART A — 30-day daily columns ============
+  const A={w:912,h:220,ml:40,mr:14,mt:14,mb:30};
+  function drawChartA(){
+    const svg=$("chartA");
+    while(svg.lastChild && svg.lastChild.nodeName!=="title" && svg.lastChild.nodeName!=="desc") svg.removeChild(svg.lastChild);
+    const plotW=A.w-A.ml-A.mr, plotH=A.h-A.mt-A.mb;
+    const SLOTS=30;
+    const recs=(history&&Array.isArray(history.records))?history.records:[];
+    // Build a fixed 30-slot axis anchored so the newest record is the last slot.
+    // Map by date; slot index = SLOTS-1 - (daysFromNewest).
+    let byDate={}; let newest=null;
+    recs.forEach(r=>{ byDate[r.date]=r; if(!newest||r.date>newest) newest=r.date; });
+    // anchor date = today if present else newest
+    const todayRec=recs.find(r=>r.is_today);
+    const anchor = todayRec? todayRec.date : newest;
+    function slotDate(i){ // i: 0..29, 29=anchor
+      if(!anchor) return null;
+      const d=new Date(anchor+"T00:00:00Z");
+      d.setUTCDate(d.getUTCDate()-(SLOTS-1-i));
+      return d.toISOString().slice(0,10);
+    }
+    // y max
+    let maxSpent=0; recs.forEach(r=>{ maxSpent=Math.max(maxSpent,num(r.spent_pct)); });
+    const yMax=Math.max(8, Math.ceil(maxSpent));
+    const y=v=> A.mt + (1-clamp(v,0,yMax)/yMax)*plotH;
+    const slotW=plotW/SLOTS;
+    const barW=Math.max(4, slotW*0.62);
+
+    const g=el=>document.createElementNS(SVGNS,el);
+    const add=(el,attrs)=>{ const e=g(el); for(const k in attrs) e.setAttribute(k,attrs[k]); svg.appendChild(e); return e; };
+
+    // horizontal gridlines + y ticks
+    const ySteps=4;
+    for(let s=0;s<=ySteps;s++){
+      const v=yMax*s/ySteps;
+      add("line",{x1:A.ml,y1:y(v),x2:A.w-A.mr,y2:y(v),class:"gridline"});
+      const tx=g("text"); tx.setAttribute("x",A.ml-7); tx.setAttribute("y",y(v)+3);
+      tx.setAttribute("text-anchor","end"); tx.setAttribute("class","axis-label"); tx.textContent=fmt(v, v%1?1:0);
+      svg.appendChild(tx);
+    }
+
+    const accent=cssVar("--accent")||"#C9A24B";
+    const MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    const barMeta=[]; // for tooltip + table
+
+    for(let i=0;i<SLOTS;i++){
+      const date=slotDate(i);
+      const cx=A.ml + i*slotW + slotW/2;
+      const rec=date?byDate[date]:null;
+      // reset rule
+      if(rec && rec.is_window_start){
+        add("line",{x1:cx-slotW/2,y1:A.mt,x2:cx-slotW/2,y2:A.mt+plotH,class:"reset-rule"});
+        const rt=g("text"); rt.setAttribute("x",cx-slotW/2+3); rt.setAttribute("y",A.mt+10);
+        rt.setAttribute("class","reset-label"); rt.textContent="⟲"; svg.appendChild(rt);
+      }
+      // x tick label every ~5 slots
+      if(i%5===0 && date){
+        const d=new Date(date+"T00:00:00Z");
+        const tx=g("text"); tx.setAttribute("x",cx); tx.setAttribute("y",A.h-A.mb+15);
+        tx.setAttribute("text-anchor","middle"); tx.setAttribute("class","axis-label");
+        tx.textContent=(d.getUTCDate())+" "+MON[d.getUTCMonth()]; svg.appendChild(tx);
+      }
+      if(!rec) continue; // absence = no column
+      const dow = new Date(date+"T00:00:00Z").getUTCDay(); // 0 Sun,6 Sat
+      const weekend = dow===0||dow===6;
+      const spent=num(rec.spent_pct);
+      const bh=Math.max(0, plotH - (y(spent)-A.mt));
+      const bx=cx-barW/2, by=y(spent);
+      let fill = rec.is_today? accent : (weekend? "color-mix(in srgb, var(--text-lo) 55%, var(--track))" : "var(--track)");
+      let stroke = rec.is_today? accent : "var(--hairline)";
+      const rect=add("rect",{x:bx,y:by,width:barW,height:Math.max(bh,1),rx:2,fill:fill,stroke:"none"});
+      rect.setAttribute("data-i",i);
+      if(rec.is_today){
+        // top accent stroke
+        add("line",{x1:bx,y1:by,x2:bx+barW,y2:by,stroke:accent,"stroke-width":2.5,"stroke-linecap":"round"});
+      } else {
+        add("rect",{x:bx,y:by,width:barW,height:Math.max(bh,1),rx:2,fill:"none",stroke:stroke,"stroke-width":1,opacity:.5});
+      }
+      const d=new Date(date+"T00:00:00Z");
+      barMeta.push({i,cx,label:(d.getUTCDate())+" "+MON[d.getUTCMonth()],spent,today:rec.is_today,x0:A.ml+i*slotW,x1:A.ml+(i+1)*slotW});
+    }
+
+    // collecting caption
+    const ca=$("chartA-collect");
+    if(recs.length< 4){
+      ca.style.display="inline-block";
+      ca.innerHTML=`Collecting data — <span class="num">${recs.length}</span> day${recs.length===1?"":"s"} recorded so far. Empty slots are days with no data yet.`;
+    } else ca.style.display="none";
+
+    // a11y data table
+    const tb=$("chartA-table").querySelector("tbody"); tb.innerHTML="";
+    recs.forEach(r=>{ const tr=document.createElement("tr");
+      tr.innerHTML=`<td>${r.date}</td><td>${fmt(num(r.spent_pct),1)}</td>`; tb.appendChild(tr); });
+
+    setupTipA(svg, barMeta, y, plotH);
+  }
+
+  function setupTipA(svg, barMeta, y, plotH){
+    const tip=$("tipA"); const frame=svg.closest(".chart-frame");
+    // crosshair line element
+    let cross=null;
+    svg.onmousemove=e=>{
+      const r=svg.getBoundingClientRect(); const scaleX=A.w/r.width;
+      const px=(e.clientX-r.left)*scaleX;
+      let hit=null; for(const b of barMeta){ if(px>=b.x0 && px<b.x1){ hit=b; break; } }
+      if(cross){ cross.remove(); cross=null; }
+      if(!hit){ tip.classList.remove("show"); return; }
+      cross=document.createElementNS(SVGNS,"line");
+      cross.setAttribute("x1",hit.cx); cross.setAttribute("y1",A.mt);
+      cross.setAttribute("x2",hit.cx); cross.setAttribute("y2",A.mt+plotH);
+      cross.setAttribute("stroke",cssVar("--text-mid")); cross.setAttribute("stroke-width","1");
+      cross.setAttribute("opacity",".4"); cross.setAttribute("stroke-dasharray","2 2");
+      svg.appendChild(cross);
+      const fr=frame.getBoundingClientRect();
+      tip.style.left=(hit.cx/scaleX + (r.left-fr.left))+"px";
+      tip.style.top=(y(hit.spent)/scaleX + (r.top-fr.top))+"px";
+      tip.innerHTML=`${hit.label} · <span class="num">${fmt(hit.spent,1)}%</span>${hit.today?" · today":""}`;
+      tip.classList.add("show");
+    };
+    svg.onmouseleave=()=>{ if(cross){cross.remove();cross=null;} tip.classList.remove("show"); };
+  }
+
+  // ============ FETCH / POLL / CONNECTION ============
+  async function fetchStats(){
+    const res=await fetch("/stats",{cache:"no-store"});
+    if(!res.ok) throw new Error("stats "+res.status);
+    return res.json();
+  }
+  async function fetchHistory(){
+    const res=await fetch("/history?days=30",{cache:"no-store"});
+    if(!res.ok) throw new Error("history "+res.status);
+    return res.json();
+  }
+
+  async function tick(initial){
+    try{
+      const s=await fetchStats();
+      stats=s; lastOk=Date.now();
+      setConnected(true);
+      renderStats();
+      // history: fetch on first load and refresh occasionally (every ~6th tick)
+      if(initial || tickCount%6===0 || !history){
+        try{ history=await fetchHistory(); drawChartA(); drawChartB(); }catch(e){/* keep old history */}
+      }
+    }catch(err){
+      setConnected(false);
+    }
+    tickCount++;
+  }
+  let tickCount=0;
+
+  function setConnected(ok){
+    connected=ok;
+    $("banner").classList.toggle("show", !ok);
+    const tg=$("liveToggle");
+    if(ok){ if(live){ tg.classList.add("live"); tg.classList.remove("paused"); } }
+  }
+  function updateBanner(){
+    if(connected) return;
+    const mins = lastOk? Math.max(0,Math.round((Date.now()-lastOk)/60000)) : 0;
+    setText("banner-ago", mins+"m");
+  }
+
+  function startTimer(){
+    if(timer) clearInterval(timer);
+    timer=setInterval(()=>{ if(live && !document.hidden) tick(false); updateBanner(); }, POLL_MS);
+  }
+
+  // ---- Live toggle ----
+  function setLive(v){
+    live=v;
+    const tg=$("liveToggle");
+    tg.classList.toggle("live", v);
+    tg.classList.toggle("paused", !v);
+    tg.setAttribute("aria-pressed", v?"true":"false");
+    setText("liveLabel", v?"Live":"Paused");
+    if(v){ tick(false); }
+  }
+  $("liveToggle").addEventListener("click",()=>setLive(!live));
+  $("liveToggle").addEventListener("keydown",e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); setLive(!live);} });
+
+  // ---- Visibility: pause hidden, immediate fetch on focus ----
+  document.addEventListener("visibilitychange",()=>{ if(!document.hidden && live) tick(false); });
+  window.addEventListener("focus",()=>{ if(live) tick(false); });
+  window.addEventListener("resize",()=>{ if(history){ drawChartA(); drawChartB(); } });
+
+  // ---- Boot ----
+  function boot(){
+    startTimer();
+    tick(true);
+  }
+  if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",boot);
+  else boot();
+})();
+</script>
+</body>
+</html>

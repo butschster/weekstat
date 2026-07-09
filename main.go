@@ -7,18 +7,19 @@
 //   - the current window boundaries (start / end / reset countdown),
 //   - per-day consumption (delta of used% since the day's first reading),
 //   - today's spend, the per-day budget that makes the quota last, and pace,
+//   - a rolling multi-window daily history for the dashboard charts.
 //
-// writing it all to ~/.claude/week-stats.json (consumed by the statusline)
-// and serving a live HTML dashboard + JSON API over HTTP.
+// It writes ~/.claude/week-stats.json (consumed by the statusline) and serves a
+// live self-contained HTML dashboard + JSON API (/stats, /history) over HTTP.
 //
 // Stdlib only, no external dependencies.
 package main
 
 import (
+	_ "embed"
 	"encoding/json"
 	"flag"
 	"fmt"
-	"html/template"
 	"log"
 	"math"
 	"net/http"
@@ -32,8 +33,14 @@ import (
 
 const weekDur = 7 * 24 * time.Hour
 
+// keep at most this many days of per-day history (feeds /history charts).
+const historyDays = 120
+
 // version is stamped at build time via -ldflags "-X main.version=...".
 var version = "dev"
+
+//go:embed dashboard.html
+var dashboardHTML []byte
 
 // ---------------------------------------------------------------------------
 // Persisted state (internal) — enough to resume day baselines after a restart.
@@ -44,13 +51,7 @@ type DayStat struct {
 	EndUsed   float64 `json:"end_used"`   // used% at the latest reading
 	StartUnix int64   `json:"start_unix"`
 	EndUnix   int64   `json:"end_unix"`
-}
-
-type PrevWindow struct {
-	Start        string   `json:"start"`
-	End          string   `json:"end"`
-	FinalUsedPct float64  `json:"final_used_pct"`
-	Days         []DayOut `json:"days"`
+	WindowEnd int64   `json:"window_end"` // reset epoch of the window this day belongs to
 }
 
 type State struct {
@@ -58,8 +59,7 @@ type State struct {
 	WindowStartUnix int64               `json:"window_start_unix"`
 	UsedPct         float64             `json:"used_pct"`
 	UpdatedUnix     int64               `json:"updated_unix"`
-	Days            map[string]*DayStat `json:"days"`
-	Previous        *PrevWindow         `json:"previous,omitempty"`
+	Days            map[string]*DayStat `json:"days"` // ALL days, across windows (pruned to historyDays)
 }
 
 // ---------------------------------------------------------------------------
@@ -90,7 +90,7 @@ type Output struct {
 		RemainingPct    float64 `json:"remaining_pct"`
 		BudgetPerDayPct float64 `json:"budget_per_day_pct"`
 		DaysLeft        float64 `json:"days_left"`
-		Pace            string  `json:"pace"` // on_track | slightly_over | over
+		Pace            string  `json:"pace"` // on_track | slightly_over | over_budget
 	} `json:"quota"`
 	Today struct {
 		Date           string  `json:"date"`
@@ -98,8 +98,24 @@ type Output struct {
 		CurrentUsedPct float64 `json:"current_used_pct"`
 		SpentPct       float64 `json:"spent_pct"`
 	} `json:"today"`
-	Days     []DayOut    `json:"days"`
-	Previous *PrevWindow `json:"previous,omitempty"`
+	Days []DayOut `json:"days"`
+}
+
+// HistRecord is one day in the /history time-series (may span several windows).
+type HistRecord struct {
+	Date           string  `json:"date"`
+	SpentPct       float64 `json:"spent_pct"`
+	UsedEod        float64 `json:"used_pct_eod"`
+	WindowID       string  `json:"window_id"`
+	WindowElapsedH float64 `json:"window_elapsed_h"`
+	IsWindowStart  bool    `json:"is_window_start"`
+	IsToday        bool    `json:"is_today"`
+}
+
+type History struct {
+	Days        int          `json:"days"`
+	WindowHours float64      `json:"window_hours"`
+	Records     []HistRecord `json:"records"`
 }
 
 // ---------------------------------------------------------------------------
@@ -199,7 +215,16 @@ func readInput(path string) (used float64, resetsAt time.Time, ok bool) {
 	return *sd.UsedPercentage, rt, true
 }
 
-func buildDays(days map[string]*DayStat, todayKey string) ([]DayOut, float64) {
+func spentOf(d *DayStat) float64 {
+	s := d.EndUsed - d.StartUsed
+	if s < 0 {
+		s = 0
+	}
+	return s
+}
+
+// buildDays renders a set of days (already scoped to one window) into DayOut.
+func buildDays(days map[string]*DayStat, todayKey string) []DayOut {
 	keys := make([]string, 0, len(days))
 	for k := range days {
 		keys = append(keys, k)
@@ -209,10 +234,7 @@ func buildDays(days map[string]*DayStat, todayKey string) ([]DayOut, float64) {
 	out := make([]DayOut, 0, len(keys))
 	for _, k := range keys {
 		d := days[k]
-		spent := d.EndUsed - d.StartUsed
-		if spent < 0 {
-			spent = 0
-		}
+		spent := spentOf(d)
 		total += spent
 		out = append(out, DayOut{
 			Date:      k,
@@ -227,7 +249,7 @@ func buildDays(days map[string]*DayStat, todayKey string) ([]DayOut, float64) {
 			out[i].SharePct = round1(out[i].SpentPct / total * 100)
 		}
 	}
-	return out, round1(total)
+	return out
 }
 
 func computeOutput(st *State, now time.Time) Output {
@@ -260,26 +282,65 @@ func computeOutput(st *State, now time.Time) Output {
 	case used <= o.Window.ElapsedPct+10:
 		o.Quota.Pace = "slightly_over"
 	default:
-		o.Quota.Pace = "over"
+		o.Quota.Pace = "over_budget"
 	}
 
+	// current-window breakdown = days tagged with the active window's reset.
 	todayKey := now.Format("2006-01-02")
-	o.Days, _ = buildDays(st.Days, todayKey)
-	o.Previous = st.Previous
+	curr := make(map[string]*DayStat)
+	for k, d := range st.Days {
+		if d.WindowEnd == st.WindowEndUnix {
+			curr[k] = d
+		}
+	}
+	o.Days = buildDays(curr, todayKey)
 
 	o.Today.Date = todayKey
 	if d, ok := st.Days[todayKey]; ok {
-		sp := d.EndUsed - d.StartUsed
-		if sp < 0 {
-			sp = 0
-		}
 		o.Today.StartUsedPct = round1(d.StartUsed)
 		o.Today.CurrentUsedPct = round1(d.EndUsed)
-		o.Today.SpentPct = round1(sp)
+		o.Today.SpentPct = round1(spentOf(d))
 	} else {
 		o.Today.CurrentUsedPct = round1(used)
 	}
 	return o
+}
+
+// historyOutput builds the daily time-series for the charts (last `days` days).
+func historyOutput(st *State, now time.Time, days int) History {
+	todayKey := now.Format("2006-01-02")
+	cutoff := now.AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+
+	keys := make([]string, 0, len(st.Days))
+	for k := range st.Days {
+		if k >= cutoff {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+
+	recs := make([]HistRecord, 0, len(keys))
+	var prevWindow int64 = -1
+	for _, k := range keys {
+		d := st.Days[k]
+		rec := HistRecord{
+			Date:     k,
+			SpentPct: round1(spentOf(d)),
+			UsedEod:  round1(d.EndUsed),
+			IsToday:  k == todayKey,
+		}
+		if d.WindowEnd > 0 {
+			winStart := d.WindowEnd - int64(weekDur.Seconds())
+			rec.WindowID = time.Unix(d.WindowEnd, 0).Local().Format("2006-01-02")
+			rec.WindowElapsedH = round1(float64(d.EndUnix-winStart) / 3600)
+		}
+		if prevWindow != -1 && d.WindowEnd != prevWindow {
+			rec.IsWindowStart = true
+		}
+		prevWindow = d.WindowEnd
+		recs = append(recs, rec)
+	}
+	return History{Days: days, WindowHours: weekDur.Hours(), Records: recs}
 }
 
 // ---------------------------------------------------------------------------
@@ -292,28 +353,16 @@ type App struct {
 	inputPath string
 	outPath   string
 	statePath string
-	tmpl      *template.Template
 }
 
-// sample folds one reading into the state, rolling the window over when the
-// reset time jumps (a new weekly period began).
+// sample folds one reading into the state. Days accumulate across windows; each
+// day is tagged with the reset epoch of the window it belongs to, so a reset is
+// just a new tag rather than a wipe — the history survives for the charts.
 func (a *App) sample(used float64, resetsAt time.Time, now time.Time) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
 	endUnix := resetsAt.Unix()
-	if a.st.WindowEndUnix != 0 && math.Abs(float64(endUnix-a.st.WindowEndUnix)) > 3600 {
-		// New window: archive the finished one, reset day baselines.
-		prevDays, _ := buildDays(a.st.Days, "")
-		a.st.Previous = &PrevWindow{
-			Start:        time.Unix(a.st.WindowStartUnix, 0).Local().Format("2006-01-02 15:04"),
-			End:          time.Unix(a.st.WindowEndUnix, 0).Local().Format("2006-01-02 15:04"),
-			FinalUsedPct: round1(a.st.UsedPct),
-			Days:         prevDays,
-		}
-		a.st.Days = map[string]*DayStat{}
-	}
-
 	a.st.WindowEndUnix = endUnix
 	a.st.WindowStartUnix = resetsAt.Add(-weekDur).Unix()
 	a.st.UsedPct = used
@@ -327,6 +376,15 @@ func (a *App) sample(used float64, resetsAt time.Time, now time.Time) {
 	}
 	d.EndUsed = used
 	d.EndUnix = now.Unix()
+	d.WindowEnd = endUnix
+
+	// prune old history
+	cutoff := now.AddDate(0, 0, -historyDays).Format("2006-01-02")
+	for k := range a.st.Days {
+		if k < cutoff {
+			delete(a.st.Days, k)
+		}
+	}
 }
 
 func (a *App) pollOnce() {
@@ -360,77 +418,40 @@ func (a *App) loop(interval time.Duration) {
 // HTTP
 // ---------------------------------------------------------------------------
 
-type dayView struct {
-	DayOut
-	BarStyle template.HTMLAttr
-	Today    bool
-}
-
-type view struct {
-	O          Output
-	PaceColor  string
-	PaceLabel  string
-	TodayColor string
-	UsedBar    template.HTMLAttr
-	ElapsedBar template.HTMLAttr
-	Days       []dayView
-}
-
-func barStyle(w float64) template.HTMLAttr {
-	w = clamp(w, 0, 100)
-	return template.HTMLAttr(fmt.Sprintf(`style="width:%.1f%%"`, w))
-}
-
-func paceMeta(pace string) (color, label string) {
-	switch pace {
-	case "on_track":
-		return "#22c55e", "on track"
-	case "slightly_over":
-		return "#eab308", "slightly over"
-	case "over":
-		return "#ef4444", "over budget"
-	}
-	return "#94a3b8", "—"
-}
-
-func (a *App) buildView(now time.Time) view {
-	a.mu.RLock()
-	o := computeOutput(a.st, now)
-	a.mu.RUnlock()
-
-	pc, pl := paceMeta(o.Quota.Pace)
-	tc := "#22c55e"
-	if o.Quota.BudgetPerDayPct > 0 {
-		switch {
-		case o.Today.SpentPct > o.Quota.BudgetPerDayPct:
-			tc = "#ef4444"
-		case o.Today.SpentPct > o.Quota.BudgetPerDayPct*0.8:
-			tc = "#eab308"
-		}
-	}
-	v := view{O: o, PaceColor: pc, PaceLabel: pl, TodayColor: tc,
-		UsedBar: barStyle(o.Quota.UsedPct), ElapsedBar: barStyle(o.Window.ElapsedPct)}
-	for _, d := range o.Days {
-		v.Days = append(v.Days, dayView{DayOut: d, BarStyle: barStyle(d.SharePct), Today: d.IsToday})
-	}
-	return v
-}
-
 func (a *App) handleHTML(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := a.tmpl.Execute(w, a.buildView(time.Now())); err != nil {
-		log.Printf("template: %v", err)
+	if r.URL.Path != "/" {
+		http.NotFound(w, r)
+		return
 	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write(dashboardHTML)
+}
+
+func writeJSON(w http.ResponseWriter, v any) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	_ = enc.Encode(v)
 }
 
 func (a *App) handleStats(w http.ResponseWriter, r *http.Request) {
 	a.mu.RLock()
 	o := computeOutput(a.st, time.Now())
 	a.mu.RUnlock()
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	_ = enc.Encode(o)
+	writeJSON(w, o)
+}
+
+func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
+	days := 30
+	if q := r.URL.Query().Get("days"); q != "" {
+		if n, err := strconv.Atoi(q); err == nil && n > 0 && n <= 365 {
+			days = n
+		}
+	}
+	a.mu.RLock()
+	h := historyOutput(a.st, time.Now(), days)
+	a.mu.RUnlock()
+	writeJSON(w, h)
 }
 
 // ---------------------------------------------------------------------------
@@ -451,7 +472,6 @@ func main() {
 		inputPath: *input,
 		outPath:   *out,
 		statePath: *statef,
-		tmpl:      template.Must(template.New("dash").Parse(dashboardHTML)),
 	}
 
 	go app.loop(*interval)
@@ -459,119 +479,10 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", app.handleHTML)
 	mux.HandleFunc("/stats", app.handleStats)
+	mux.HandleFunc("/history", app.handleHistory)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) { fmt.Fprintln(w, "ok") })
 
 	log.Printf("weekstat %s: watching %s → %s, dashboard on http://%s", version, *input, *out, *addr)
 	srv := &http.Server{Addr: *addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	log.Fatal(srv.ListenAndServe())
 }
-
-// ---------------------------------------------------------------------------
-// Dashboard template (self-contained, auto-refreshing).
-// ---------------------------------------------------------------------------
-
-const dashboardHTML = `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="refresh" content="10">
-<title>weekstat · weekly quota</title>
-<style>
-  :root { color-scheme: dark; }
-  * { box-sizing: border-box; }
-  body { margin:0; font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-         background:#0b0f17; color:#e5e7eb; padding:28px; }
-  .wrap { max-width:860px; margin:0 auto; }
-  h1 { font-size:15px; font-weight:600; letter-spacing:.04em; text-transform:uppercase;
-       color:#94a3b8; margin:0 0 4px; }
-  .sub { color:#64748b; font-size:13px; margin-bottom:24px; }
-  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:14px; margin-bottom:26px; }
-  .card { background:#111827; border:1px solid #1f2937; border-radius:12px; padding:16px 18px; }
-  .card .k { font-size:12px; color:#94a3b8; text-transform:uppercase; letter-spacing:.05em; }
-  .card .v { font-size:30px; font-weight:700; margin-top:6px; line-height:1; }
-  .card .v small { font-size:15px; font-weight:500; color:#64748b; }
-  .badge { display:inline-block; padding:3px 12px; border-radius:999px; font-size:13px; font-weight:600; }
-  .bar { height:8px; background:#1f2937; border-radius:999px; overflow:hidden; margin-top:12px; }
-  .bar > span { display:block; height:100%; border-radius:999px; }
-  table { width:100%; border-collapse:collapse; margin-top:10px; }
-  th,td { text-align:left; padding:9px 10px; border-bottom:1px solid #1f2937; font-size:14px; }
-  th { color:#94a3b8; font-weight:500; font-size:12px; text-transform:uppercase; letter-spacing:.04em; }
-  td.num { text-align:right; font-variant-numeric:tabular-nums; }
-  .daybar { height:6px; background:#1f2937; border-radius:999px; overflow:hidden; min-width:80px; }
-  .daybar > span { display:block; height:100%; background:#3b82f6; }
-  tr.today td { background:#0f1b2d; }
-  tr.today td:first-child::after { content:" ·today"; color:#3b82f6; font-size:11px; }
-  .win { color:#cbd5e1; font-size:14px; margin-bottom:18px; }
-  .win b { color:#e5e7eb; }
-  .foot { color:#475569; font-size:12px; margin-top:26px; }
-  .empty { color:#64748b; padding:40px 0; text-align:center; }
-</style>
-</head>
-<body>
-<div class="wrap">
-  <h1>Claude Code weekly quota</h1>
-  <div class="sub">updated {{.O.UpdatedAt}} · page auto-refreshes every 10&nbsp;s</div>
-
-{{if not .O.HasData}}
-  <div class="empty">No data yet.<br>The daemon is waiting for the first <code>rate_limits.seven_day</code> snapshot from the statusline.</div>
-{{else}}
-  <div class="win">
-    Window: <b>{{.O.Window.Start}}</b> → <b>{{.O.Window.End}}</b>
-    · resets in <b>{{printf "%.1f" .O.Window.ResetsInHours}}&nbsp;h</b>
-    · {{printf "%.0f" .O.Window.ElapsedPct}}% elapsed
-  </div>
-
-  <div class="grid">
-    <div class="card">
-      <div class="k">Used</div>
-      <div class="v">{{printf "%.1f" .O.Quota.UsedPct}}<small>%</small></div>
-      <div class="bar"><span {{.UsedBar}} style="background:#3b82f6"></span></div>
-    </div>
-    <div class="card">
-      <div class="k">Left</div>
-      <div class="v">{{printf "%.0f" .O.Quota.RemainingPct}}<small>%</small></div>
-    </div>
-    <div class="card">
-      <div class="k">Spent today</div>
-      <div class="v" style="color:{{.TodayColor}}">{{printf "%.1f" .O.Today.SpentPct}}<small>%</small></div>
-    </div>
-    <div class="card">
-      <div class="k">Budget / day</div>
-      <div class="v">{{printf "%.1f" .O.Quota.BudgetPerDayPct}}<small>%/d · {{printf "%.1f" .O.Quota.DaysLeft}}d</small></div>
-    </div>
-    <div class="card">
-      <div class="k">Pace</div>
-      <div class="v"><span class="badge" style="background:{{.PaceColor}};color:#0b0f17">{{.PaceLabel}}</span></div>
-      <div class="bar"><span {{.ElapsedBar}} style="background:#475569"></span></div>
-    </div>
-  </div>
-
-  <h1>Per-day breakdown</h1>
-  <table>
-    <thead><tr><th>Day</th><th class="num">used at end</th><th class="num">spent</th><th>share of week</th><th class="num">%</th></tr></thead>
-    <tbody>
-    {{range .Days}}
-      <tr class="{{if .Today}}today{{end}}">
-        <td>{{.Date}}</td>
-        <td class="num">{{printf "%.1f" .EndUsed}}%</td>
-        <td class="num">{{printf "%.1f" .SpentPct}}%</td>
-        <td><div class="daybar"><span {{.BarStyle}}></span></div></td>
-        <td class="num">{{printf "%.0f" .SharePct}}%</td>
-      </tr>
-    {{else}}
-      <tr><td colspan="5" style="color:#64748b">no days in the current window yet</td></tr>
-    {{end}}
-    </tbody>
-  </table>
-
-  {{with .O.Previous}}
-  <h1 style="margin-top:26px">Previous window</h1>
-  <div class="win">{{.Start}} → {{.End}} · final used <b>{{printf "%.1f" .FinalUsedPct}}%</b></div>
-  {{end}}
-{{end}}
-
-  <div class="foot">weekstat {{.O.Version}} · JSON API: <code>/stats</code> · health: <code>/healthz</code></div>
-</div>
-</body>
-</html>`
