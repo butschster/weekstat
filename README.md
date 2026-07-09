@@ -141,6 +141,31 @@ Example `/stats`:
 
 ---
 
+## Top-panel indicator (Ubuntu / GNOME)
+
+A small companion app puts a **ring-gauge icon in the top panel** (the arc fills
+with used%, coloured by pace) with a dropdown showing today's spend, budget/day,
+used/left and the reset countdown — so you read the numbers without opening a
+browser. It polls the daemon's `/stats`.
+
+```bash
+./install.sh --tray          # build + autostart the indicator
+```
+
+It's a **separate Go module** (`tray/`) so the daemon stays dependency-free — the
+tray needs a DBus StatusNotifierItem (`fyne.io/systray`). Requirements: GNOME with
+the **AppIndicator** extension (default on Ubuntu) and the Ayatana typelib:
+
+```bash
+sudo apt install gir1.2-ayatanaappindicator3-0.1   # if the icon doesn't appear
+```
+
+The installer adds a launcher to the app menu, so after **Quit** you can reopen it
+by searching “weekstat” in Activities. Run manually:
+`~/.claude/tools/weekstat/weekstat-tray --addr 127.0.0.1:7457`.
+
+---
+
 ## Pacing logic
 
 - `left% = 100 − used%`

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=weekstat tray
+Comment=Claude Code weekly quota indicator
+Exec=%h/.claude/tools/weekstat/weekstat-tray --addr 127.0.0.1:7457
+Icon=utilities-system-monitor
+Categories=Utility;
+X-GNOME-Autostart-enabled=true

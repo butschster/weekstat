@@ -1,6 +1,8 @@
-# build artifact
+# build artifacts
 /weekstat
 weekstat
+weekstat-tray
+dist/
 
 # runtime data (lives under ~/.claude, never commit)
 *.json.tmp

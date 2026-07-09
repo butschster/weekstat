@@ -29,6 +29,16 @@ jobs:
             tar -C dist -czf "dist/${name}.tar.gz" "$name"
             rm "dist/$name"
           done
+          # tray indicator (Linux/GNOME only)
+          for arch in amd64 arm64; do
+            name="weekstat-tray_linux_${arch}"
+            echo ">> $name"
+            ( cd tray && CGO_ENABLED=0 GOOS=linux GOARCH=$arch go build \
+              -trimpath -ldflags "-s -w -X main.version=${GITHUB_REF_NAME}" \
+              -o "../dist/$name" . )
+            tar -C dist -czf "dist/${name}.tar.gz" "$name"
+            rm "dist/$name"
+          done
           ( cd dist && sha256sum *.tar.gz > checksums.txt )
           ls -la dist
 
