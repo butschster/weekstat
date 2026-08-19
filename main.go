@@ -47,11 +47,12 @@ var dashboardHTML []byte
 // ---------------------------------------------------------------------------
 
 type DayStat struct {
-	StartUsed float64 `json:"start_used"` // used% at the first reading of the day
-	EndUsed   float64 `json:"end_used"`   // used% at the latest reading
-	StartUnix int64   `json:"start_unix"`
-	EndUnix   int64   `json:"end_unix"`
-	WindowEnd int64   `json:"window_end"` // reset epoch of the window this day belongs to
+	StartUsed  float64 `json:"start_used"` // used% at the first reading of the day (re-baselined on a mid-day window reset)
+	EndUsed    float64 `json:"end_used"`   // used% at the latest reading
+	StartUnix  int64   `json:"start_unix"`
+	EndUnix    int64   `json:"end_unix"`
+	WindowEnd  int64   `json:"window_end"`            // reset epoch of the window this day belongs to
+	CarrySpent float64 `json:"carry_spent,omitempty"` // spend banked from windows that ended earlier this same day
 }
 
 type State struct {
@@ -97,8 +98,12 @@ type Output struct {
 		StartUsedPct   float64 `json:"start_used_pct"`
 		CurrentUsedPct float64 `json:"current_used_pct"`
 		SpentPct       float64 `json:"spent_pct"`
-		BudgetPct      float64 `json:"budget_pct"` // today's allowance (== quota.budget_per_day_pct)
-		LeftPct        float64 `json:"left_pct"`   // budget − spent today (negative = overspent)
+		// SpentInWindowPct is today's spend inside the current window only.
+		// It differs from spent_pct on a reset day, where spent_pct also
+		// includes what was burned in the old window before the reset.
+		SpentInWindowPct float64 `json:"spent_in_window_pct"`
+		BudgetPct        float64 `json:"budget_pct"` // today's allowance (== quota.budget_per_day_pct)
+		LeftPct          float64 `json:"left_pct"`   // budget − spent-in-window (negative = overspent)
 	} `json:"today"`
 	Days []DayOut `json:"days"`
 }
@@ -217,12 +222,30 @@ func readInput(path string) (used float64, resetsAt time.Time, ok bool) {
 	return *sd.UsedPercentage, rt, true
 }
 
-func spentOf(d *DayStat) float64 {
+// windowSpentOf is the day's spend within its current window: the delta since
+// the day's (possibly re-baselined) first reading, never negative.
+func windowSpentOf(d *DayStat) float64 {
 	s := d.EndUsed - d.StartUsed
 	if s < 0 {
 		s = 0
 	}
 	return s
+}
+
+// spentOf is the day's full calendar-day spend: the current window's delta plus
+// whatever was banked from windows that ended earlier the same day.
+func spentOf(d *DayStat) float64 {
+	return d.CarrySpent + windowSpentOf(d)
+}
+
+// sameWindow treats two reset epochs as the same window if they are within an
+// hour of each other, so encoding jitter in resets_at doesn't churn the state.
+func sameWindow(a, b int64) bool {
+	d := a - b
+	if d < 0 {
+		d = -d
+	}
+	return d <= 3600
 }
 
 // buildDays renders a set of days (already scoped to one window) into DayOut.
@@ -288,7 +311,9 @@ func computeOutput(st *State, now time.Time) Output {
 	// carrying an over/under balance into tomorrow moves it, at the day boundary.
 	todayKey := now.Format("2006-01-02")
 	startUsed := used
-	if d, ok := st.Days[todayKey]; ok {
+	// Only trust today's baseline if it belongs to the active window — a stale
+	// pre-reset baseline would wildly understate the quota left.
+	if d, ok := st.Days[todayKey]; ok && sameWindow(d.WindowEnd, st.WindowEndUnix) {
 		startUsed = d.StartUsed
 	}
 	remainStart := clamp(100-startUsed, 0, 100)
@@ -314,7 +339,7 @@ func computeOutput(st *State, now time.Time) Output {
 	// current-window breakdown = days tagged with the active window's reset.
 	curr := make(map[string]*DayStat)
 	for k, d := range st.Days {
-		if d.WindowEnd == st.WindowEndUnix {
+		if sameWindow(d.WindowEnd, st.WindowEndUnix) {
 			curr[k] = d
 		}
 	}
@@ -326,10 +351,14 @@ func computeOutput(st *State, now time.Time) Output {
 		o.Today.StartUsedPct = round1(d.StartUsed)
 		o.Today.CurrentUsedPct = round1(d.EndUsed)
 		o.Today.SpentPct = round1(spentOf(d))
+		o.Today.SpentInWindowPct = round1(windowSpentOf(d))
 	} else {
 		o.Today.CurrentUsedPct = round1(used)
 	}
-	o.Today.LeftPct = round1(o.Today.BudgetPct - o.Today.SpentPct)
+	// Today's allowance is a slice of the current window's quota, so overspend
+	// is measured against the in-window part only — on a reset day the old
+	// window's morning spend doesn't eat the fresh window's daily budget.
+	o.Today.LeftPct = round1(o.Today.BudgetPct - o.Today.SpentInWindowPct)
 	return o
 }
 
@@ -390,20 +419,32 @@ func (a *App) sample(used float64, resetsAt time.Time, now time.Time) {
 	defer a.mu.Unlock()
 
 	endUnix := resetsAt.Unix()
-	a.st.WindowEndUnix = endUnix
-	a.st.WindowStartUnix = resetsAt.Add(-weekDur).Unix()
+	if !sameWindow(a.st.WindowEndUnix, endUnix) {
+		a.st.WindowEndUnix = endUnix
+		a.st.WindowStartUnix = resetsAt.Add(-weekDur).Unix()
+	}
 	a.st.UsedPct = used
 	a.st.UpdatedUnix = now.Unix()
 
 	key := now.Format("2006-01-02")
 	d, ok := a.st.Days[key]
-	if !ok {
+	switch {
+	case !ok:
 		d = &DayStat{StartUsed: used, StartUnix: now.Unix()}
 		a.st.Days[key] = d
+	case d.WindowEnd != 0 && !sameWindow(d.WindowEnd, a.st.WindowEndUnix):
+		// The weekly window reset mid-day: used% just dropped to the new
+		// window's level. Bank what the old window's part of the day spent and
+		// re-baseline the day at the new window's first reading — otherwise
+		// today's spend reads 0 and the daily budget is computed from a stale
+		// pre-reset baseline for the rest of the day.
+		d.CarrySpent += windowSpentOf(d)
+		d.StartUsed = used
+		d.StartUnix = now.Unix()
 	}
 	d.EndUsed = used
 	d.EndUnix = now.Unix()
-	d.WindowEnd = endUnix
+	d.WindowEnd = a.st.WindowEndUnix
 
 	// prune old history
 	cutoff := now.AddDate(0, 0, -historyDays).Format("2006-01-02")

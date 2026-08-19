@@ -9,3 +9,4 @@ dist/
 week-stats.json
 .weekstat-state.json
 .statusline-input.json
+.weekstat-tray.json

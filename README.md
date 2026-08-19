@@ -134,7 +134,7 @@ Example `/stats`:
   "version": "v1.1.0",
   "window":  { "start": "2026-07-07 12:00", "end": "2026-07-14 12:00", "resets_in_hours": 123.5, "elapsed_pct": 26.5 },
   "quota":   { "used_pct": 23, "remaining_pct": 77, "budget_per_day_pct": 15, "days_left": 5.1, "pace": "on_track" },
-  "today":   { "date": "2026-07-09", "start_used_pct": 23, "current_used_pct": 27, "spent_pct": 4 },
+  "today":   { "date": "2026-07-09", "start_used_pct": 23, "current_used_pct": 27, "spent_pct": 4, "spent_in_window_pct": 4, "budget_pct": 15, "left_pct": 11 },
   "days":    [ { "date": "2026-07-09", "spent_pct": 4, "share_pct": 100, "is_today": true } ]
 }
 ```
@@ -144,8 +144,15 @@ Example `/stats`:
 ## Top-panel indicator (Ubuntu / GNOME)
 
 Read the numbers without opening a browser. A small companion app puts a
-**ring-gauge icon in the top panel**: the arc fills with **used%** and is coloured
-by pace (Okabe-Ito, colorblind-safe).
+**ring-gauge icon in the top panel**. The ring has two modes (toggle from the
+dropdown, remembered in `~/.claude/.weekstat-tray.json`):
+
+- **Ring: weekly usage** (default) — the arc fills with used% of the weekly
+  quota, coloured by pace (Okabe-Ito, colorblind-safe); the label shows used%.
+- **Ring: today's budget** — the arc fills with today's spend as a share of the
+  daily allowance; the label shows **how much % is left for today**, so one
+  glance answers "can I keep going today?". Green while under 85% of the
+  allowance, amber up to the limit, red when overspent.
 
 ![tray ring icons](docs/tray-icons.png)
 
@@ -161,10 +168,17 @@ by pace (Okabe-Ito, colorblind-safe).
 |------|---------|
 | Pace verdict | `✓ on track` |
 | Today | `Today: +2.0% of 12.8%  ·  10.8% left` |
+| Today bar | `▕██▏░░░░░░░░░░░▏ 16% of day budget` |
+| Week | `Week: 25% used  ·  75% left` |
+| Week bar | `▕███▌░░░░░░░░░░▏ 25% of week` |
 | Budget/day | `Budget/day: 12.8%/d  ·  5.1d left` |
-| Used / left | `Used 25%  ·  left 75%` |
 | Resets | `Resets in 123 h` |
+| Ring mode | `Ring: today's budget` / `Ring: weekly usage` (checkboxes) |
 | Actions | `Open dashboard` · `Refresh now` · `Quit` |
+
+The progress bars use eighth-block resolution and flag overspend with `⚠ over`
+past 100% of the allowance. Flags: `--ring today|week` forces a mode on start
+(and persists it), `--config` moves the preference file.
 
 "Today" is measured against **today's own allowance** (the stable budget/day), so
 you see at a glance whether you're within your slice for the day and how much of
@@ -202,6 +216,17 @@ the icon, depending on the shell.
   `on track` ≤ elapsed%, `slightly over` ≤ +10pp, otherwise `over budget`.
 
 No dollars — everything is a percentage of the subscription quota.
+
+**Reset day.** When the 7-day window resets mid-day, used% suddenly drops. The
+daemon banks what the old window's part of the day spent (`carry_spent`) and
+re-baselines the day at the new window's first reading, so:
+
+- `today.spent_pct` stays the full calendar-day figure (old + new window);
+- `today.spent_in_window_pct` counts only the new window's part — the daily
+  budget and `left_pct` are measured against it, so the morning's pre-reset
+  spend doesn't eat the fresh window's allowance;
+- the daily budget is computed from the fresh baseline, not the stale
+  pre-reset one.
 
 ---
 
