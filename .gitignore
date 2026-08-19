@@ -10,3 +10,6 @@ week-stats.json
 .weekstat-state.json
 .statusline-input.json
 .weekstat-tray.json
+
+# module-local build artefact
+tray/tray
