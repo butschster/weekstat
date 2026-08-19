@@ -232,7 +232,7 @@ func render(s *stats) {
 	mWeek.SetTitle(fmt.Sprintf("Week: %.0f%% used  ·  %.0f%% left", s.Quota.UsedPct, s.Quota.RemainingPct))
 	mWeekBar.SetTitle(barLine(s.Quota.UsedPct/100, fmt.Sprintf("%.0f%% of week", s.Quota.UsedPct)))
 	mBudget.SetTitle(fmt.Sprintf("Budget/day: %.1f%%/d  ·  %.1fd left", s.Quota.BudgetPerDayPct, s.Quota.DaysLeft))
-	mReset.SetTitle(fmt.Sprintf("Resets in %.0f h", s.Window.ResetsInHours))
+	mReset.SetTitle("Resets in " + fmtCountdown(s.Window.ResetsInHours))
 }
 
 // icon renders a ring gauge PNG: a faint full track with a progress arc that

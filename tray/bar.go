@@ -65,6 +65,16 @@ func barLine(frac float64, suffix string) string {
 	return s
 }
 
+// fmtCountdown renders fractional hours as "146h 30m" (clamped at zero), so
+// the last hour before a reset reads "0h 30m" instead of a bare "0 h".
+func fmtCountdown(hours float64) string {
+	m := int(math.Round(hours * 60))
+	if m < 0 {
+		m = 0
+	}
+	return fmt.Sprintf("%dh %dm", m/60, m%60)
+}
+
 // todaySpentInWindow is today's spend counted against the daily budget. Falls
 // back to the full-day figure when talking to a daemon that predates the
 // spent_in_window_pct field.

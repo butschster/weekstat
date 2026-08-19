@@ -445,13 +445,14 @@
     if(stats.updated_at) setText("updated", "updated "+stats.updated_at);
     if(stats.version) setText("foot-ver", stats.version);
     if(w.start && w.end){
-      setText("foot-window", ` · window ${w.start} → ${w.end} · resets in ${fmt(w.resets_in_hours,1)} h`);
+      setText("foot-window", ` · window ${w.start} → ${w.end} · resets in ${fmtHM(w.resets_in_hours)}`);
     }
 
     // redraw Chart B head (depends on live stats)
     if(history) drawChartB();
   }
   function num(v,def=0){ return (v===null||v===undefined||isNaN(v))? def : Number(v); }
+  function fmtHM(h){ const m=Math.max(0,Math.round(num(h)*60)); return `${Math.floor(m/60)}h ${m%60}m`; }
   function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
   function animWidth(el,pct){ el.style.width=pct+"%"; }
 

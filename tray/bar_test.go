@@ -54,6 +54,24 @@ func TestBarLineOverBudgetMarker(t *testing.T) {
 	}
 }
 
+func TestFmtCountdown(t *testing.T) {
+	cases := []struct {
+		hours float64
+		want  string
+	}{
+		{146.5, "146h 30m"},
+		{0.5, "0h 30m"},
+		{1.99, "1h 59m"},
+		{0, "0h 0m"},
+		{-2, "0h 0m"}, // stale data past the reset never goes negative
+	}
+	for _, c := range cases {
+		if got := fmtCountdown(c.hours); got != c.want {
+			t.Errorf("%v h: got %q, want %q", c.hours, got, c.want)
+		}
+	}
+}
+
 func TestTodayHexThresholds(t *testing.T) {
 	cases := []struct {
 		spent, budget float64

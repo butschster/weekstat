@@ -172,7 +172,7 @@ dropdown, remembered in `~/.claude/.weekstat-tray.json`):
 | Week | `Week: 25% used  ·  75% left` |
 | Week bar | `▕███▌░░░░░░░░░░▏ 25% of week` |
 | Budget/day | `Budget/day: 12.8%/d  ·  5.1d left` |
-| Resets | `Resets in 123 h` |
+| Resets | `Resets in 123h 30m` |
 | Ring mode | `Ring: today's budget` / `Ring: weekly usage` (checkboxes) |
 | Actions | `Open dashboard` · `Refresh now` · `Quit` |
 
