@@ -52,6 +52,20 @@ type stats struct {
 		BudgetPct        float64 `json:"budget_pct"`
 		LeftPct          float64 `json:"left_pct"`
 	} `json:"today"`
+	// Service is the Claude Code health from status.claude.com (see the
+	// daemon's status.go). Absent on daemons that predate the check.
+	Service struct {
+		Status         string `json:"status"`
+		Level          string `json:"level"`
+		Outage         bool   `json:"outage"`
+		Label          string `json:"label"`
+		Incident       string `json:"incident"`
+		IncidentStatus string `json:"incident_status"`
+		IncidentURL    string `json:"incident_url"`
+		IncidentSince  string `json:"incident_since"`
+		PageURL        string `json:"page_url"`
+		Error          string `json:"error"`
+	} `json:"service"`
 }
 
 // pace → (Okabe-Ito colorblind-safe hex, glyph, label)
@@ -69,6 +83,7 @@ func paceMeta(p string) (hex, glyph, label string) {
 
 var (
 	mVerdict, mToday, mTodayBar, mWeek, mWeekBar, mBudget, mReset *systray.MenuItem
+	mService, mIncident                                           *systray.MenuItem
 	mRingToday, mRingWeek                                         *systray.MenuItem
 
 	stMu      sync.Mutex
@@ -101,6 +116,11 @@ func onReady() {
 
 	mVerdict = systray.AddMenuItem("connecting…", "current pace")
 	mVerdict.Disable()
+	// Service rows sit in the verdict group: during an outage the pace verdict
+	// is hidden and the service row becomes the headline (no duplicate line).
+	mService = systray.AddMenuItem("Claude Code: —", "service health from status.claude.com — click to open the status page")
+	mIncident = systray.AddMenuItem("", "open incident — click to open on the status page")
+	mIncident.Hide()
 	systray.AddSeparator()
 	mToday = systray.AddMenuItem("Today: —", "quota % burned so far today vs today's allowance")
 	mToday.Disable()
@@ -127,9 +147,13 @@ func onReady() {
 		for {
 			select {
 			case <-mOpen.ClickedCh:
-				_ = exec.Command("xdg-open", dashURL).Start()
+				openURL(dashURL)
 			case <-mRefresh.ClickedCh:
 				update()
+			case <-mService.ClickedCh:
+				openURL(servicePageURL(currentStats()))
+			case <-mIncident.ClickedCh:
+				openURL(serviceIncidentURL(currentStats()))
 			case <-mRingToday.ClickedCh:
 				setRing(ringToday)
 			case <-mRingWeek.ClickedCh:
@@ -162,6 +186,18 @@ func fetch() (*stats, error) {
 		return nil, err
 	}
 	return &s, nil
+}
+
+func openURL(u string) {
+	if u != "" {
+		_ = exec.Command("xdg-open", u).Start()
+	}
+}
+
+func currentStats() *stats {
+	stMu.Lock()
+	defer stMu.Unlock()
+	return lastStats
 }
 
 func setRing(mode string) {
@@ -198,9 +234,24 @@ func update() {
 }
 
 func render(s *stats) {
+	renderService(s)
+	outage := s.Service.Outage
+	if outage {
+		// The panel badge says "API down" instead of the gauge; the dropdown
+		// keeps the usage figures (they are the last known values).
+		systray.SetIcon(outageIcon())
+		systray.SetTitle(outageTitle)
+		systray.SetTooltip(serviceTip(s))
+		mVerdict.Hide()
+	} else {
+		mVerdict.Show()
+	}
+
 	if !s.HasData {
-		systray.SetTitle("wk …")
-		systray.SetIcon(icon(0, colGrey))
+		if !outage {
+			systray.SetTitle("wk …")
+			systray.SetIcon(icon(0, colGrey))
+		}
 		mVerdict.SetTitle("collecting data…")
 		mToday.SetTitle("Today: —")
 		mTodayBar.SetTitle(barLine(0, "—"))
@@ -214,10 +265,15 @@ func render(s *stats) {
 	mode := ringMode
 	stMu.Unlock()
 
-	frac, hex, title, tip := ringSpec(mode, s)
-	systray.SetIcon(icon(clamp01(frac), hex))
-	systray.SetTitle(title)
-	systray.SetTooltip(tip)
+	if !outage {
+		frac, hex, title, tip := ringSpec(mode, s)
+		systray.SetIcon(icon(clamp01(frac), hex))
+		systray.SetTitle(title)
+		if s.Service.Level == levelDegraded {
+			tip = serviceLine(s) + " · " + tip
+		}
+		systray.SetTooltip(tip)
+	}
 
 	_, glyph, label := paceMeta(s.Quota.Pace)
 	mVerdict.SetTitle(fmt.Sprintf("%s  %s", glyph, label))
@@ -233,6 +289,53 @@ func render(s *stats) {
 	mWeekBar.SetTitle(barLine(s.Quota.UsedPct/100, fmt.Sprintf("%.0f%% of week", s.Quota.UsedPct)))
 	mBudget.SetTitle(fmt.Sprintf("Budget/day: %.1f%%/d  ·  %.1fd left", s.Quota.BudgetPerDayPct, s.Quota.DaysLeft))
 	mReset.SetTitle("Resets in " + fmtCountdown(s.Window.ResetsInHours))
+}
+
+// renderService fills the two status-page menu rows.
+func renderService(s *stats) {
+	mService.SetTitle(serviceLine(s))
+	if inc := serviceIncidentLine(s); inc != "" {
+		mIncident.SetTitle(inc)
+		mIncident.SetTooltip(serviceIncidentTip(s))
+		mIncident.Show()
+	} else {
+		mIncident.Hide()
+	}
+}
+
+// outageIcon is the "API down" badge: a solid red disc with a white bar — the
+// no-entry sign, unmistakable next to the usual ring gauge.
+func outageIcon() []byte {
+	const n = 64
+	const r = 30.0
+	cx, cy := (n-1)/2.0, (n-1)/2.0
+	img := image.NewNRGBA(image.Rect(0, 0, n, n))
+	red := parseHex(colRed)
+	for y := 0; y < n; y++ {
+		for x := 0; x < n; x++ {
+			dx, dy := float64(x)-cx, float64(y)-cy
+			cov := clamp01(r - math.Hypot(dx, dy) + 0.6)
+			if cov <= 0 {
+				continue
+			}
+			// horizontal bar: 36px wide, 9px tall, feathered edges
+			bar := clamp01(18-math.Abs(dx)+0.6) * clamp01(4.5-math.Abs(dy)+0.6)
+			c := color.NRGBA{red.R, red.G, red.B, uint8(cov * 255)}
+			if bar > 0 {
+				c = color.NRGBA{
+					uint8(float64(red.R)*(1-bar) + 255*bar),
+					uint8(float64(red.G)*(1-bar) + 255*bar),
+					uint8(float64(red.B)*(1-bar) + 255*bar),
+					uint8(cov * 255)}
+			}
+			img.SetNRGBA(x, y, c)
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		return nil
+	}
+	return buf.Bytes()
 }
 
 // icon renders a ring gauge PNG: a faint full track with a progress arc that

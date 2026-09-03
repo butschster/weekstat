@@ -106,6 +106,10 @@ type Output struct {
 		LeftPct          float64 `json:"left_pct"`   // budget − spent-in-window (negative = overspent)
 	} `json:"today"`
 	Days []DayOut `json:"days"`
+	// Service is the Claude Code health from status.claude.com. When
+	// service.outage is true, consumers hide the usage figures and show an
+	// "API is down" badge instead — see status.go.
+	Service ServiceStatus `json:"service"`
 }
 
 // HistRecord is one day in the /history time-series (may span several windows).
@@ -409,6 +413,18 @@ type App struct {
 	inputPath string
 	outPath   string
 	statePath string
+	status    *statusChecker // nil when the status-page check is disabled
+}
+
+// output is computeOutput plus the service-health block. Caller holds a.mu.
+func (a *App) output(now time.Time) Output {
+	o := computeOutput(a.st, now)
+	if a.status != nil {
+		o.Service = a.status.current()
+	} else {
+		o.Service = ServiceStatus{Component: defaultStatusComponent, Status: "unknown", Level: levelUnknown, Label: "unknown", PageURL: defaultStatusPage}
+	}
+	return o
 }
 
 // sample folds one reading into the state. Days accumulate across windows; each
@@ -461,7 +477,7 @@ func (a *App) pollOnce() {
 		a.sample(used, reset, now)
 	}
 	a.mu.RLock()
-	out := computeOutput(a.st, now)
+	out := a.output(now)
 	stCopy := *a.st
 	a.mu.RUnlock()
 
@@ -504,7 +520,7 @@ func writeJSON(w http.ResponseWriter, v any) {
 
 func (a *App) handleStats(w http.ResponseWriter, r *http.Request) {
 	a.mu.RLock()
-	o := computeOutput(a.st, time.Now())
+	o := a.output(time.Now())
 	a.mu.RUnlock()
 	writeJSON(w, o)
 }
@@ -522,6 +538,14 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, h)
 }
 
+// handleService exposes just the status-page check (also embedded in /stats).
+func (a *App) handleService(w http.ResponseWriter, r *http.Request) {
+	a.mu.RLock()
+	o := a.output(time.Now())
+	a.mu.RUnlock()
+	writeJSON(w, o.Service)
+}
+
 // ---------------------------------------------------------------------------
 
 func main() {
@@ -533,6 +557,9 @@ func main() {
 	statef := flag.String("state", def(".weekstat-state.json"), "internal resume state file")
 	addr := flag.String("addr", "127.0.0.1:7457", "HTTP listen address for the dashboard")
 	interval := flag.Duration("interval", 5*time.Second, "poll interval")
+	statusURL := flag.String("status-url", defaultStatusURL, "Statuspage summary endpoint for the Claude service health")
+	statusComponent := flag.String("status-component", defaultStatusComponent, "status-page component to track")
+	statusInterval := flag.Duration("status-interval", 5*time.Minute, "how often to poll the status page (0 disables the check)")
 	flag.Parse()
 
 	app := &App{
@@ -542,6 +569,10 @@ func main() {
 		statePath: *statef,
 	}
 
+	if *statusInterval > 0 {
+		app.status = newStatusChecker(*statusURL, *statusComponent)
+		go app.status.loop(*statusInterval)
+	}
 	go app.loop(*interval)
 
 	mux := http.NewServeMux()
@@ -549,6 +580,7 @@ func main() {
 	mux.HandleFunc("/stats", app.handleStats)
 	mux.HandleFunc("/history", app.handleHistory)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) { fmt.Fprintln(w, "ok") })
+	mux.HandleFunc("/service", app.handleService)
 
 	log.Printf("weekstat %s: watching %s → %s, dashboard on http://%s", version, *input, *out, *addr)
 	srv := &http.Server{Addr: *addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}

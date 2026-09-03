@@ -89,6 +89,15 @@ printf ' \033[2m%s/%s\033[0m' "$(fmt_k "$used_tok")" "$(fmt_k "$max_tok")"  # us
 seven_pct=$(printf '%s' "$input" | jq -r '.rate_limits.seven_day.used_percentage // empty')
 seven_reset=$(printf '%s' "$input" | jq -r '.rate_limits.seven_day.resets_at // empty')
 
+# ---- Claude Code service health (status.claude.com, polled by the daemon) ----
+# An outage is flagged with a red badge in front of the usage line (the
+# figures stay — they are still the last known values); degraded performance
+# gets an amber note at the end. The incident title lives in the tray/dashboard.
+IFS=$'\t' read -r svc_outage svc_level svc_label <<<"$(
+  jq -r '[(.service.outage // false), (.service.level // ""), (.service.label // "")] | @tsv' \
+    "$HOME/.claude/week-stats.json" 2>/dev/null
+)"
+
 if [ -n "$seven_pct" ]; then
   now_epoch=$(date +%s)
 
@@ -139,11 +148,19 @@ if [ -n "$seven_pct" ]; then
   fi
 
   # ---- render line 2 ----
-  printf '\n\033[2m wk:\033[0m %b%s\033[0m' "$pcol" "$qbar"
+  printf '\n'
+  [ "$svc_outage" = "true" ] && printf '\033[1;31m ⛔ %s\033[0m \033[2m·\033[0m' "${svc_label:-outage}"
+  printf '\033[2m wk:\033[0m %b%s\033[0m' "$pcol" "$qbar"
   printf ' \033[2mleft\033[0m %s%%' "$remain_pct"
   [ -n "$today_spent" ] && printf ' \033[2m·\033[0m \033[2mtoday\033[0m %b%.0f%%\033[0m' "$tcol" "$today_spent"
   if [ -n "$budget_day" ]; then
     printf ' \033[2m·\033[0m \033[2mbudget\033[0m \033[1m%s%%/day\033[0m \033[2mfor %sd\033[0m' "$budget_day" "$days_left"
     printf ' \033[2m·\033[0m %b%s\033[0m' "$pcol" "$pmark"
   fi
+  # degraded performance / maintenance: API works, but flag it
+  [ "$svc_level" = "degraded" ] && printf ' \033[2m·\033[0m \033[33m▲ %s\033[0m' "$svc_label"
 fi
+
+# Claude Code drops the statusline when the command fails, and the last
+# command above is a "[ … ] && printf" that returns 1 when the test is false.
+exit 0

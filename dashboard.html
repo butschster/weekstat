@@ -89,6 +89,19 @@
   .alarm.show{display:flex;}
   .alarm svg{flex:none;}
 
+  /* Service-health banner (status.claude.com) */
+  .svc{
+    display:none;align-items:center;gap:10px;margin-bottom:16px;padding:11px 15px;
+    border-radius:var(--radius-sm);font-size:13px;font-weight:500;
+    background:rgba(230,159,0,.10);border:1px solid rgba(230,159,0,.4);border-left:3px solid var(--slight);color:#F5D9A0;
+  }
+  .svc.show{display:flex;}
+  .svc.outage{background:rgba(213,94,0,.14);border-color:rgba(213,94,0,.5);border-left-color:var(--over);color:#F2C9AC;}
+  .svc svg{flex:none;}
+  .svc .txt{flex:1;min-width:0;}
+  .svc .txt b{font-weight:650;color:var(--text-hi);}
+  .svc a{color:inherit;text-decoration:underline;text-underline-offset:2px;white-space:nowrap;}
+
   /* ===== HERO VERDICT ===== */
   .hero{
     position:relative;display:flex;align-items:center;gap:22px;
@@ -242,6 +255,12 @@
     <span>Over budget — at today's rate you'll exhaust the weekly quota before it resets.</span>
   </div>
 
+  <div class="svc" id="svc" role="alert">
+    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><line x1="7" y1="12" x2="17" y2="12" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
+    <span class="txt" id="svc-text"></span>
+    <a id="svc-link" href="https://status.claude.com" target="_blank" rel="noopener">status page ↗</a>
+  </div>
+
   <main>
     <!-- HERO VERDICT -->
     <section class="hero" id="hero" aria-live="polite" aria-atomic="true" aria-labelledby="hero-word">
@@ -375,6 +394,8 @@
       return `<svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="21" fill="none" stroke="${color}" stroke-width="3"/><path d="M15 25 l6 6 l12 -14" fill="none" stroke="${color}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
     if(kind==="triangle")
       return `<svg viewBox="0 0 48 48"><path d="M24 5 L45 42 H3 Z" fill="none" stroke="${color}" stroke-width="3" stroke-linejoin="round"/><line x1="24" y1="19" x2="24" y2="30" stroke="${color}" stroke-width="4" stroke-linecap="round"/><circle cx="24" cy="36" r="2.4" fill="${color}"/></svg>`;
+    if(kind==="block")
+      return `<svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="21" fill="${color}"/><rect x="11" y="20.5" width="26" height="7" rx="2" fill="#fff"/></svg>`;
     // octagon
     const p="M16 4 L32 4 L44 16 L44 32 L32 44 L16 44 L4 32 L4 16 Z";
     return `<svg viewBox="0 0 48 48"><path d="${p}" fill="none" stroke="${color}" stroke-width="3" stroke-linejoin="round"/><line x1="17" y1="17" x2="31" y2="31" stroke="${color}" stroke-width="4" stroke-linecap="round"/><line x1="31" y1="17" x2="17" y2="31" stroke="${color}" stroke-width="4" stroke-linecap="round"/></svg>`;
@@ -406,15 +427,31 @@
     document.documentElement.style.setProperty("--state", p.color);
     document.documentElement.style.setProperty("--state-dim", p.dim);
 
+    // Service health (status.claude.com). An outage replaces the verdict:
+    // usage is meaningless while requests fail.
+    const svc = stats.service||{};
+    const outage = !!svc.outage, degraded = svc.level==="degraded";
+    renderService(svc);
+
     // Hero
-    $("hero-glyph").innerHTML = glyphSVG(p.glyph, p.raw);
-    setText("hero-word", p.word);
+    if(outage){
+      document.documentElement.style.setProperty("--state", PACE.over_budget.color);
+      document.documentElement.style.setProperty("--state-dim", PACE.over_budget.dim);
+      $("hero-glyph").innerHTML = glyphSVG("block", PACE.over_budget.raw);
+      setText("hero-word", "API DOWN");
+    } else {
+      $("hero-glyph").innerHTML = glyphSVG(p.glyph, p.raw);
+      setText("hero-word", p.word);
+    }
     setNum("hero-budget", fmt(budget,1));
     setNum("hero-daysleft", fmt(daysLeft,1));
 
     // Plain-english clause
     let clause;
-    if(!stats.has_data){
+    if(outage){
+      const inc = svc.incident ? ` — <span class="num">${esc(svc.incident)}</span>${svc.incident_status? " ("+esc(svc.incident_status)+")":""}` : "";
+      clause = `Claude Code is in <span class="num">${esc(svc.label||"outage")}</span>${inc}. Usage is paused until the API is back; the quota figures below are the last known values.`;
+    } else if(!stats.has_data){
       clause = "Collecting data — the window just started.";
     } else {
       const delta = used - elapsed;
@@ -437,9 +474,9 @@
 
     // Alarm banner + title
     const over = paceKey==="over_budget";
-    $("alarm").classList.toggle("show", over && stats.has_data);
+    $("alarm").classList.toggle("show", over && stats.has_data && !outage);
     const baseTitle="weekstat · weekly quota";
-    document.title = over ? "⚠ "+baseTitle : baseTitle;
+    document.title = outage ? "⛔ API down · "+baseTitle : degraded ? "▲ "+baseTitle : over ? "⚠ "+baseTitle : baseTitle;
 
     // updated + version + window footer
     if(stats.updated_at) setText("updated", "updated "+stats.updated_at);
@@ -450,6 +487,24 @@
 
     // redraw Chart B head (depends on live stats)
     if(history) drawChartB();
+  }
+  function esc(t){ return String(t).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+  function renderService(svc){
+    const el=$("svc"); if(!el) return;
+    const show = svc.level==="outage" || svc.level==="degraded";
+    el.classList.toggle("show", show);
+    el.classList.toggle("outage", svc.level==="outage");
+    if(!show) return;
+    let html = `<b>Claude Code: ${esc(svc.label||svc.status||"—")}</b>`;
+    if(svc.incident){
+      html += ` — ${esc(svc.incident)}`;
+      if(svc.incident_status) html += ` <span class="num">(${esc(svc.incident_status)})</span>`;
+      if(svc.incident_since) html += ` · since ${esc(svc.incident_since)}`;
+    }
+    if(svc.incident_update) html += `<br><span style="font-weight:400;opacity:.85">${esc(svc.incident_update)}</span>`;
+    if(svc.checked_at) html += ` <span style="font-weight:400;opacity:.6">· checked ${esc(svc.checked_at)}</span>`;
+    $("svc-text").innerHTML = html;
+    $("svc-link").href = svc.incident_url || svc.page_url || "https://status.claude.com";
   }
   function num(v,def=0){ return (v===null||v===undefined||isNaN(v))? def : Number(v); }
   function fmtHM(h){ const m=Math.max(0,Math.round(num(h)*60)); return `${Math.floor(m/60)}h ${m%60}m`; }
