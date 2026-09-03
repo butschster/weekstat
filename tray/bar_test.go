@@ -157,3 +157,58 @@ func TestRingPrefsRoundtrip(t *testing.T) {
 		t.Errorf("invalid value: %s, want the %s default", got, ringWeek)
 	}
 }
+
+func TestServiceLines(t *testing.T) {
+	var s stats
+	s.Service.Level = levelOutage
+	s.Service.Outage = true
+	s.Service.Label = "partial outage"
+	s.Service.Incident = "Elevated errors for multiple models"
+	s.Service.IncidentStatus = "identified"
+	s.Service.IncidentSince = "2026-09-03 17:26"
+	s.Service.IncidentURL = "https://stspg.io/x"
+	if got := serviceLine(&s); got != "Claude Code: ⛔ partial outage" {
+		t.Errorf("outage line = %q", got)
+	}
+	if got := serviceIncidentLine(&s); got != "  ↳ Elevated errors for multiple models" {
+		t.Errorf("incident line = %q", got)
+	}
+	if got := serviceIncidentTip(&s); got != "Elevated errors for multiple models (identified) · since 2026-09-03 17:26 — click to open" {
+		t.Errorf("incident tip = %q", got)
+	}
+	s.Service.Incident = "Elevated error rates on requests to Claude Fable 5.1 and Opus 5 across all regions"
+	if got := serviceIncidentLine(&s); len([]rune(got)) != len([]rune("  ↳ "))+maxIncidentRunes || got[len(got)-3:] != "…" {
+		t.Errorf("long incident not truncated: %q", got)
+	}
+	if serviceIncidentURL(&s) != "https://stspg.io/x" || servicePageURL(&s) != "https://status.claude.com" {
+		t.Errorf("urls = %q %q", serviceIncidentURL(&s), servicePageURL(&s))
+	}
+
+	var ok stats
+	ok.Service.Level, ok.Service.Label = levelOK, "operational"
+	if got := serviceLine(&ok); got != "Claude Code: ✓ operational" {
+		t.Errorf("ok line = %q", got)
+	}
+	if serviceIncidentLine(&ok) != "" {
+		t.Error("no incident expected")
+	}
+
+	var old stats // daemon without the check, or status page unreachable
+	if got := serviceLine(&old); got != "Claude Code: ? unknown" {
+		t.Errorf("unknown line = %q", got)
+	}
+	old.Service.Error = "dial tcp: timeout"
+	if got := serviceLine(&old); got != "Claude Code: ? status page unreachable" {
+		t.Errorf("error line = %q", got)
+	}
+	if servicePageURL(nil) == "" || serviceIncidentURL(nil) == "" {
+		t.Error("nil stats must still yield the status page url")
+	}
+}
+
+func TestOutageIconIsPNG(t *testing.T) {
+	b := outageIcon()
+	if len(b) < 8 || string(b[1:4]) != "PNG" {
+		t.Fatalf("not a PNG (%d bytes)", len(b))
+	}
+}

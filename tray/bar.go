@@ -25,6 +25,94 @@ const (
 	ringToday = "today"
 )
 
+// service levels published by the daemon (status.go)
+const (
+	levelOK       = "ok"
+	levelDegraded = "degraded"
+	levelOutage   = "outage"
+)
+
+// outageTitle is the panel text shown instead of used% during an outage.
+const outageTitle = "API ✗"
+
+// serviceLine is the "Claude Code: partial outage" menu row.
+func serviceLine(s *stats) string {
+	sv := &s.Service
+	label := sv.Label
+	if label == "" {
+		label = "unknown"
+	}
+	switch sv.Level {
+	case levelOK:
+		return "Claude Code: ✓ " + label
+	case levelDegraded:
+		return "Claude Code: ▲ " + label
+	case levelOutage:
+		return "Claude Code: ⛔ " + label
+	}
+	if sv.Error != "" {
+		return "Claude Code: ? status page unreachable"
+	}
+	return "Claude Code: ? " + label
+}
+
+// maxIncidentRunes caps the incident row so a long title doesn't stretch the
+// whole dropdown; the full text goes to the row's tooltip.
+const maxIncidentRunes = 44
+
+// truncate cuts s to at most n runes, ending with an ellipsis when it did.
+func truncate(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n-1]) + "…"
+}
+
+// serviceIncidentLine is the incident row under it; empty when no incident.
+func serviceIncidentLine(s *stats) string {
+	if s.Service.Incident == "" {
+		return ""
+	}
+	return "  ↳ " + truncate(s.Service.Incident, maxIncidentRunes)
+}
+
+// serviceIncidentTip is the untruncated incident detail for the row's tooltip.
+func serviceIncidentTip(s *stats) string {
+	sv := &s.Service
+	tip := sv.Incident
+	if sv.IncidentStatus != "" {
+		tip += " (" + sv.IncidentStatus + ")"
+	}
+	if sv.IncidentSince != "" {
+		tip += " · since " + sv.IncidentSince
+	}
+	return tip + " — click to open"
+}
+
+// serviceTip is the panel tooltip during an outage.
+func serviceTip(s *stats) string {
+	tip := "weekstat — " + serviceLine(s) + " — usage hidden until the API is back"
+	if s.Service.Incident != "" {
+		tip += " · " + s.Service.Incident
+	}
+	return tip
+}
+
+func servicePageURL(s *stats) string {
+	if s != nil && s.Service.PageURL != "" {
+		return s.Service.PageURL
+	}
+	return "https://status.claude.com"
+}
+
+func serviceIncidentURL(s *stats) string {
+	if s != nil && s.Service.IncidentURL != "" {
+		return s.Service.IncidentURL
+	}
+	return servicePageURL(s)
+}
+
 // partial cells, 1/8 … 7/8 of a block, left-aligned fills.
 var eighths = []rune{0, '▏', '▎', '▍', '▌', '▋', '▊', '▉'}
 

@@ -17,6 +17,13 @@ per day to make it last until the reset, and a per-day breakdown.
   the remaining days);
 - **pace** — on track / slightly over / over budget.
 
+When **status.claude.com** reports a Claude Code outage, a red badge is put in
+front of the line (the figures stay — they're the last known values):
+
+```
+ ⛔ partial outage · wk: ██░░░░░░░░ left 77% · today 4% · budget 15.0%/day for 5.1d · on track ✓
+```
+
 Plus an HTTP dashboard you can drop in on: **http://127.0.0.1:7457/**
 
 ![weekstat dashboard](docs/dashboard.png)
@@ -31,9 +38,9 @@ Claude Code ──stdin(JSON)──▶ statusline script
                                  │  └─▶ dumps stdin to ~/.claude/.statusline-input.json
                                  ▼
                           weekstat (daemon)  ── watches the file, every 5s
-                                 │
-                                 ├─▶ ~/.claude/week-stats.json  ◀── statusline reads "today"
-                                 └─▶ HTTP :7457  (dashboard + /stats + /history + /healthz)
+                                 │            ── polls status.claude.com, every 5 min
+                                 ├─▶ ~/.claude/week-stats.json  ◀── statusline reads "today" + "service"
+                                 └─▶ HTTP :7457  (dashboard + /stats + /history + /service + /healthz)
 ```
 
 Claude Code only exposes `rate_limits.seven_day.used_percentage` and `resets_at`
@@ -111,6 +118,14 @@ today=$(jq -r '.today.spent_pct // empty' "$HOME/.claude/week-stats.json" 2>/dev
 [ -n "$today" ] && printf ' · today %.0f%%' "$today"
 ```
 
+**c) Flag an outage** — read the daemon's service check before drawing the line:
+
+```bash
+svc_outage=$(jq -r '.service.outage // false' "$HOME/.claude/week-stats.json" 2>/dev/null)
+[ "$svc_outage" = "true" ] && printf '⛔ %s · ' "$(jq -r '.service.label' "$HOME/.claude/week-stats.json")"
+# … the usual wk: line …
+```
+
 Everything else (left%, budget/day, pace) the statusline can compute itself
 directly from `rate_limits.seven_day` on stdin — the daemon isn't required for
 that; it's needed for "today", the per-day history and the dashboard. The example
@@ -125,6 +140,7 @@ in `examples/` does both.
 | `GET /` | Live self-contained dashboard: hero verdict, evidence bar, cumulative-burn chart (vs. ideal corridor) and a 30-day consumption chart. Polls JSON and updates in place — no page reload. |
 | `GET /stats` | Current snapshot as JSON (also written to `week-stats.json`) |
 | `GET /history?days=N` | Daily time-series that feeds the charts (default 30, max 365) |
+| `GET /service` | Just the Claude Code health check from status.claude.com (also embedded in `/stats` as `service`) |
 | `GET /healthz` | `ok` |
 
 Example `/stats`:
@@ -135,9 +151,48 @@ Example `/stats`:
   "window":  { "start": "2026-07-07 12:00", "end": "2026-07-14 12:00", "resets_in_hours": 123.5, "elapsed_pct": 26.5 },
   "quota":   { "used_pct": 23, "remaining_pct": 77, "budget_per_day_pct": 15, "days_left": 5.1, "pace": "on_track" },
   "today":   { "date": "2026-07-09", "start_used_pct": 23, "current_used_pct": 27, "spent_pct": 4, "spent_in_window_pct": 4, "budget_pct": 15, "left_pct": 11 },
-  "days":    [ { "date": "2026-07-09", "spent_pct": 4, "share_pct": 100, "is_today": true } ]
+  "days":    [ { "date": "2026-07-09", "spent_pct": 4, "share_pct": 100, "is_today": true } ],
+  "service": { "component": "Claude Code", "status": "operational", "level": "ok", "outage": false,
+               "label": "operational", "page_url": "https://status.claude.com", "checked_at": "2026-07-09 12:00:05" }
 }
 ```
+
+---
+
+## Service health (status.claude.com)
+
+The daemon polls the public status page
+([`/api/v2/summary.json`](https://status.claude.com/api/v2/summary.json), a
+Statuspage.io site) every 5 minutes and tracks the **Claude Code** component.
+The result is the `service` block of `/stats` and `week-stats.json`:
+
+| Field | Meaning |
+|-------|---------|
+| `status` | Raw Statuspage status: `operational`, `degraded_performance`, `under_maintenance`, `partial_outage`, `major_outage`, or `unknown` |
+| `level` | Folded: `ok` · `degraded` (degraded / maintenance) · `outage` (partial / major) · `unknown` (never fetched) |
+| `outage` | `true` when `level == outage` — consumers hide usage and show the badge |
+| `label` | Human wording (`partial outage`) |
+| `incident`, `incident_status`, `incident_url`, `incident_since`, `incident_update` | The open incident that names Claude Code, if any |
+| `checked_at`, `error` | Last successful fetch; on a failed fetch the previous result is kept and `error` is set, so a flaky network never fakes (or hides) an outage |
+
+What each surface does with it:
+
+- **outage** (`partial_outage` / `major_outage`): the statusline prefixes the
+  `wk:` line with a red `⛔ partial outage` badge; the tray
+  swaps the ring for a red no-entry badge with `API ✗` in the panel, while the
+  dropdown keeps the usage figures and adds the incident row (click it to
+  open the incident page); the
+  dashboard turns the hero into **API DOWN** and shows a red banner with the
+  latest incident update.
+- **degraded** (`degraded_performance` / `under_maintenance`): the API works,
+  so usage stays — the statusline appends `▲ degraded performance`, the tray
+  notes it in the tooltip and dropdown, the dashboard shows an amber banner.
+- **operational / unknown**: nothing changes. `unknown` (status page never
+  reached) is deliberately treated as "no news".
+
+Flags: `--status-interval 0` disables the check entirely; `--status-component`
+switches the tracked component (e.g. `"Claude API (api.anthropic.com)"`);
+`--status-url` points at another Statuspage summary endpoint.
 
 ---
 
@@ -166,7 +221,9 @@ dropdown, remembered in `~/.claude/.weekstat-tray.json`):
 
 | Item | Example |
 |------|---------|
-| Pace verdict | `✓ on track` |
+| Pace verdict | `✓ on track` (hidden during an outage — the service row is the headline then) |
+| Service | `Claude Code: ✓ operational` / `Claude Code: ⛔ partial outage` (click → status page) |
+| Incident | `↳ Elevated errors for multiple models` (click → incident; hidden when none; long titles are cut, the tooltip has the full text) |
 | Today | `Today: +2.0% of 12.8%  ·  10.8% left` |
 | Today bar | `▕██▏░░░░░░░░░░░▏ 16% of day budget` |
 | Week | `Week: 25% used  ·  75% left` |
@@ -240,6 +297,9 @@ Daemon flags (defaults shown):
 --state     ~/.claude/.weekstat-state.json     resume state file
 --addr      127.0.0.1:7457                      HTTP dashboard address
 --interval  5s                                   poll interval
+--status-url        https://status.claude.com/api/v2/summary.json
+--status-component  "Claude Code"                 status-page component to track
+--status-interval   5m                            status-page poll interval (0 = off)
 ```
 
 Change the dashboard address at install time: `ADDR=127.0.0.1:9000 ./install.sh`.
