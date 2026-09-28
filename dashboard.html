@@ -533,13 +533,19 @@
     txt("plan",{x:x(WINDOW_H)-4,y:y(100)+14,"text-anchor":"end",class:"plan-lbl"});
 
     // actual: history points in this window + the live head, cumulative (never decreasing)
+    // within a segment; a drop of RESET_DROP points or more is an early manual reset:
+    // the line goes down with it and starts climbing again (issue #6)
     const curWin=w.end? String(w.end).slice(0,10) : null;
     const pts=[[0,0]];
     if(history&&Array.isArray(history.records)) history.records.forEach(r=>{ if(curWin && r.window_id===curWin) pts.push([num(r.window_elapsed_h),num(r.used_pct_eod)]); });
     const hd=head(); pts.push([hd.h,hd.v]);
     pts.sort((a,b)=>a[0]-b[0]);
-    let mx=0; const mono=[];
-    for(const p of pts){ mx=Math.max(mx,p[1]); if(mono.length && mono[mono.length-1][0]===p[0]) mono[mono.length-1][1]=mx; else mono.push([p[0],mx]); }
+    const RESET_DROP=10;
+    let mx=0; const mono=[], resets=[];
+    for(const p of pts){
+      if(mono.length && p[1]<=mx-RESET_DROP){ mx=p[1]; resets.push(p); } else mx=Math.max(mx,p[1]);
+      if(mono.length && mono[mono.length-1][0]===p[0]) mono[mono.length-1][1]=mx; else mono.push([p[0],mx]);
+    }
 
     // projection to the reset, in the pace colour
     if(stats&&stats.has_data&&hd.end!==null){
@@ -559,6 +565,10 @@
       const a=mono[i-1], b=mono[i], mh=(a[0]+b[0])/2, mv=(a[1]+b[1])/2;
       if(mv>100*mh/WINDOW_H+half) add("line",{x1:x(a[0]),y1:y(a[1]),x2:x(b[0]),y2:y(b[1]),stroke:stateRaw,"stroke-width":2.4,"stroke-linecap":"round"});
     }
+    resets.forEach(p=>{
+      add("line",{x1:x(p[0]),y1:G.mt,x2:x(p[0]),y2:G.mt+ph,stroke:"var(--text-2)","stroke-width":1,"stroke-dasharray":"2 4",opacity:.6});
+      txt("↺ reset",{x:x(p[0])+4,y:G.mt+12,style:"font:12px var(--sans)",fill:"var(--text-2)"});
+    });
     add("circle",{cx:x(hd.h),cy:y(hd.v),r:4.5,fill:"var(--text)",stroke:"var(--panel)","stroke-width":2});
 
     setText("prof-hint", `plan band ± ½ even day (${fmt(half,1)}%) · ${fmt(hd.h,0)} of 168 h`);
