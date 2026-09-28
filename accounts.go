@@ -49,6 +49,13 @@ type AccountSummary struct {
 	BudgetPerDayPct float64 `json:"budget_per_day_pct"`
 	TodaySpentPct   float64 `json:"today_spent_pct"`
 	Pace            string  `json:"pace"`
+	// The account's own window, so an overview can show every account without
+	// a /stats call each; empty strings and zeros until the account has data.
+	HasData       bool    `json:"has_data"`
+	WindowStart   string  `json:"window_start"`
+	WindowEnd     string  `json:"window_end"`
+	ElapsedPct    float64 `json:"elapsed_pct"`
+	ResetsInHours float64 `json:"resets_in_hours"`
 }
 
 func newState() *State {
@@ -323,6 +330,11 @@ func (st *State) summary(key string, now time.Time) AccountSummary {
 		BudgetPerDayPct: o.Quota.BudgetPerDayPct,
 		TodaySpentPct:   o.Today.SpentPct,
 		Pace:            o.Quota.Pace,
+		HasData:         o.HasData,
+		WindowStart:     o.Window.Start,
+		WindowEnd:       o.Window.End,
+		ElapsedPct:      o.Window.ElapsedPct,
+		ResetsInHours:   o.Window.ResetsInHours,
 	}
 }
 

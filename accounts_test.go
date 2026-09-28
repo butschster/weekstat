@@ -340,6 +340,15 @@ func TestOutputAccountBlock(t *testing.T) {
 	if sumA["label"] != "Acme" || sumA["active"] != false || sumA["used_pct"] != 10.0 {
 		t.Errorf("accounts[A] = %v", sumA)
 	}
+	// each account carries its own window, for the all-accounts overview
+	if sumA["has_data"] != true || sumA["window_start"] != "2026-08-18 12:00" || sumA["window_end"] != "2026-08-25 12:00" ||
+		sumA["resets_in_hours"] != 146.0 || sumA["elapsed_pct"] != 13.1 {
+		t.Errorf("accounts[A] window = %v", sumA)
+	}
+	sumB, _ := accts[acctB.Key].(map[string]any)
+	if sumB["window_end"] != "2026-08-22 18:00" || sumB["resets_in_hours"] != 80.0 {
+		t.Errorf("accounts[B] window = %v", sumB)
+	}
 }
 
 func TestHTTPAccountParam(t *testing.T) {

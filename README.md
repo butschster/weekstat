@@ -178,8 +178,8 @@ in `examples/` does both.
 | `GET /stats` | Current snapshot as JSON (also written to `week-stats.json`) |
 | `GET /history?days=N` | Daily time-series that feeds the charts (default 30, max 365) |
 | `GET /service` | Just the Claude Code health check from status.claude.com (also embedded in `/stats` as `service`) |
-| `GET /accounts` | Every known account (key, label, plan, active, used%, today, budget/day), most recent first |
-| `?account=<key>` | On `/stats` and `/history`: that account instead of the active one (404 if unknown). The dashboard shows an account switcher when there is more than one. |
+| `GET /accounts` | Every known account (key, label, plan, active, used%, today, budget/day, pace, and its own window: start, end, elapsed%, hours to the reset), most recent first |
+| `?account=<key>` | On `/stats` and `/history`: that account instead of the active one (404 if unknown). With more than one account the dashboard opens on the all-accounts view (see *Several accounts*). |
 | `GET /healthz` | `ok` |
 
 Example `/stats`:
@@ -196,7 +196,9 @@ Example `/stats`:
   "account":  { "key": "3f9a1c0b7d2e", "label": "jane@example.com", "plan": "max 20x" },
   "accounts": { "3f9a1c0b7d2e": { "key": "3f9a1c0b7d2e", "label": "jane@example.com", "plan": "max 20x", "active": true,
                                   "updated_at": "2026-07-09 12:00:05", "used_pct": 27, "remaining_pct": 73,
-                                  "budget_per_day_pct": 15, "today_spent_pct": 4, "pace": "on_track" } }
+                                  "budget_per_day_pct": 15, "today_spent_pct": 4, "pace": "on_track",
+                                  "has_data": true, "window_start": "2026-07-07 12:00", "window_end": "2026-07-14 12:00",
+                                  "elapsed_pct": 26.5, "resets_in_hours": 123.5 } }
 }
 ```
 
@@ -219,6 +221,20 @@ the snapshot (see *Wiring*, step b), so:
 - the current account is always named, even when there is only one: the
   statusline before `wk:` (email up to `@`), the dashboard header (full email;
   a switcher appears with a second account), the tray dropdown and tooltip.
+
+**All accounts on one screen.** With two or more accounts the dashboard opens
+on **All accounts**: a row per account (remaining with the even-pace tick,
+today, budget/day, pace, time to its reset; a green dot marks the active one)
+and, below, a compact burn profile of each account on its own 7-day window
+(actual vs plan, projection, early manual resets), all on the same scale.
+Click a row or a chart for that account's detailed view; the account rows stay
+on top as the switcher, and *All accounts* (or the header select) goes back.
+The choice is remembered per browser.
+
+**Tray: pick the account.** With two or more accounts the tray's *Account*
+row opens a submenu: *Follow active* (default — the icon follows the latest
+session) or one account, which pins the icon, tooltip and figures to it. The
+choice is saved in `~/.claude/.weekstat-tray.json` (`"account": "<key>"`).
 
 **Token sessions.** A session started with `CLAUDE_CODE_OAUTH_TOKEN`
 (`claude setup-token`) is a different account from the one in `.claude.json`,
