@@ -9,8 +9,12 @@
 //   - today's spend, the per-day budget that makes the quota last, and pace,
 //   - a rolling multi-window daily history for the dashboard charts.
 //
+// Figures are kept per Claude account (the statusline script tags each snapshot
+// with a hashed account key — see accounts.go), so switching accounts is not
+// mistaken for a window reset.
+//
 // It writes ~/.claude/week-stats.json (consumed by the statusline) and serves a
-// live self-contained HTML dashboard + JSON API (/stats, /history) over HTTP.
+// live self-contained HTML dashboard + JSON API (/stats, /history, /accounts) over HTTP.
 //
 // Stdlib only, no external dependencies.
 package main
@@ -55,12 +59,27 @@ type DayStat struct {
 	CarrySpent float64 `json:"carry_spent,omitempty"` // spend banked from windows that ended earlier this same day
 }
 
-type State struct {
+// AccountState is one account's quota window and its per-day history.
+type AccountState struct {
+	Label           string              `json:"label,omitempty"` // email, else organization name, as sent by the statusline
+	Plan            string              `json:"plan,omitempty"`  // raw plan / rate-limit tier, as sent by the statusline
 	WindowEndUnix   int64               `json:"window_end_unix"`
 	WindowStartUnix int64               `json:"window_start_unix"`
 	UsedPct         float64             `json:"used_pct"`
 	UpdatedUnix     int64               `json:"updated_unix"`
 	Days            map[string]*DayStat `json:"days"` // ALL days, across windows (pruned to historyDays)
+}
+
+// State holds every account seen. The embedded AccountState mirrors the
+// active account so the file stays readable by pre-accounts builds.
+type State struct {
+	AccountState
+	Active   string                   `json:"active,omitempty"`
+	Accounts map[string]*AccountState `json:"accounts,omitempty"`
+
+	// what was on disk at load, for the one-off backup (see needsBackup)
+	loadedFile     bool
+	loadedAccounts int
 }
 
 // ---------------------------------------------------------------------------
@@ -110,6 +129,10 @@ type Output struct {
 	// service.outage is true, consumers hide the usage figures and show an
 	// "API is down" badge instead — see status.go.
 	Service ServiceStatus `json:"service"`
+	// Account is the account these figures belong to; Accounts summarises
+	// every known account by key. Both are absent until an account is seen.
+	Account  *AccountRef               `json:"account,omitempty"`
+	Accounts map[string]AccountSummary `json:"accounts,omitempty"`
 }
 
 // HistRecord is one day in the /history time-series (may span several windows).
@@ -158,13 +181,13 @@ func writeJSONAtomic(path string, v any) error {
 }
 
 func loadState(path string) *State {
-	st := &State{Days: map[string]*DayStat{}}
+	st := newState()
 	if b, err := os.ReadFile(path); err == nil {
 		_ = json.Unmarshal(b, st)
+		st.loadedFile = true
+		st.loadedAccounts = len(st.Accounts)
 	}
-	if st.Days == nil {
-		st.Days = map[string]*DayStat{}
-	}
+	st.normalize()
 	return st
 }
 
@@ -198,13 +221,17 @@ func parseResets(raw json.RawMessage) (time.Time, bool) {
 	return time.Time{}, false
 }
 
-// readInput pulls used% and reset time out of the statusline snapshot file.
-func readInput(path string) (used float64, resetsAt time.Time, ok bool) {
+// readInput pulls used%, reset time and the account (when the statusline
+// script provides one) out of the statusline snapshot file.
+func readInput(path string) (used float64, resetsAt time.Time, acct AccountInfo, ok bool) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return
 	}
 	var in struct {
+		Weekstat struct {
+			Account AccountInfo `json:"account"`
+		} `json:"weekstat"`
 		RateLimits struct {
 			SevenDay struct {
 				UsedPercentage *float64        `json:"used_percentage"`
@@ -223,7 +250,7 @@ func readInput(path string) (used float64, resetsAt time.Time, ok bool) {
 	if !rok {
 		return
 	}
-	return *sd.UsedPercentage, rt, true
+	return *sd.UsedPercentage, rt, in.Weekstat.Account, true
 }
 
 // windowSpentOf is the day's spend within its current window: the delta since
@@ -281,7 +308,8 @@ func buildDays(days map[string]*DayStat, todayKey string) []DayOut {
 	return out
 }
 
-func computeOutput(st *State, now time.Time) Output {
+// windowOutput renders one account's window into the public figures.
+func windowOutput(st *AccountState, now time.Time) Output {
 	var o Output
 	o.Version = version
 	o.UpdatedAt = now.Local().Format("2006-01-02 15:04:05")
@@ -366,8 +394,8 @@ func computeOutput(st *State, now time.Time) Output {
 	return o
 }
 
-// historyOutput builds the daily time-series for the charts (last `days` days).
-func historyOutput(st *State, now time.Time, days int) History {
+// accountHistory builds one account's daily time-series for the charts (last `days` days).
+func accountHistory(st *AccountState, now time.Time, days int) History {
 	todayKey := now.Format("2006-01-02")
 	cutoff := now.AddDate(0, 0, -(days - 1)).Format("2006-01-02")
 
@@ -414,11 +442,18 @@ type App struct {
 	outPath   string
 	statePath string
 	status    *statusChecker // nil when the status-page check is disabled
+	backedUp  bool           // the state file's one-off .bak was taken
 }
 
-// output is computeOutput plus the service-health block. Caller holds a.mu.
+// output is the active account's figures plus the service-health block.
+// Caller holds a.mu.
 func (a *App) output(now time.Time) Output {
-	o := computeOutput(a.st, now)
+	return a.outputFor(a.st.Active, now)
+}
+
+// outputFor is output for a given account key. Caller holds a.mu.
+func (a *App) outputFor(key string, now time.Time) Output {
+	o := a.st.output(key, now)
 	if a.status != nil {
 		o.Service = a.status.current()
 	} else {
@@ -427,28 +462,67 @@ func (a *App) output(now time.Time) Output {
 	return o
 }
 
-// sample folds one reading into the state. Days accumulate across windows; each
-// day is tagged with the reset epoch of the window it belongs to, so a reset is
-// just a new tag rather than a wipe — the history survives for the charts.
+// sample folds one reading without an account key (an old statusline script);
+// the account is guessed from the window — see State.route.
 func (a *App) sample(used float64, resetsAt time.Time, now time.Time) {
+	a.sampleAccount(AccountInfo{}, used, resetsAt, now)
+}
+
+// sampleAccount routes one reading to its account's state and makes that
+// account the active one.
+func (a *App) sampleAccount(info AccountInfo, used float64, resetsAt time.Time, now time.Time) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	endUnix := resetsAt.Unix()
-	if !sameWindow(a.st.WindowEndUnix, endUnix) {
-		a.st.WindowEndUnix = endUnix
-		a.st.WindowStartUnix = resetsAt.Add(-weekDur).Unix()
+	key := a.st.route(info.Key, resetsAt.Unix(), now)
+	acc := a.st.Accounts[key]
+	if info.Key != "" {
+		acc.Label = accountLabel(info.Label) // follows the latest snapshot
 	}
-	a.st.UsedPct = used
-	a.st.UpdatedUnix = now.Unix()
+	if info.Plan != "" {
+		acc.Plan = info.Plan
+	}
+	acc.sample(used, resetsAt, now)
+	a.st.Active = key
+	a.st.AccountState = *acc
+	a.st.pruneAccounts(now)
+}
+
+// transition is how a reading relates to the account's current window.
+type transition int
+
+const (
+	transSame     transition = iota // same window: plain accumulation
+	transRollover                   // the window changed (reset at the end of the week)
+	// A manual early reset (same window, used% drops sharply) slots in here.
+)
+
+func (st *AccountState) classify(endUnix int64) transition {
+	if sameWindow(st.WindowEndUnix, endUnix) {
+		return transSame
+	}
+	return transRollover
+}
+
+// sample folds one reading into the account. Days accumulate across windows;
+// each day is tagged with the reset epoch of the window it belongs to, so a
+// reset is just a new tag rather than a wipe — the history survives for the charts.
+func (st *AccountState) sample(used float64, resetsAt time.Time, now time.Time) {
+	endUnix := resetsAt.Unix()
+	if st.classify(endUnix) == transRollover {
+		st.WindowEndUnix = endUnix
+		st.WindowStartUnix = resetsAt.Add(-weekDur).Unix()
+	}
+	st.UsedPct = used
+	st.UpdatedUnix = now.Unix()
 
 	key := now.Format("2006-01-02")
-	d, ok := a.st.Days[key]
+	d, ok := st.Days[key]
 	switch {
 	case !ok:
 		d = &DayStat{StartUsed: used, StartUnix: now.Unix()}
-		a.st.Days[key] = d
-	case d.WindowEnd != 0 && !sameWindow(d.WindowEnd, a.st.WindowEndUnix):
+		st.Days[key] = d
+	case d.WindowEnd != 0 && !sameWindow(d.WindowEnd, st.WindowEndUnix):
 		// The weekly window reset mid-day: used% just dropped to the new
 		// window's level. Bank what the old window's part of the day spent and
 		// re-baseline the day at the new window's first reading — otherwise
@@ -460,21 +534,21 @@ func (a *App) sample(used float64, resetsAt time.Time, now time.Time) {
 	}
 	d.EndUsed = used
 	d.EndUnix = now.Unix()
-	d.WindowEnd = a.st.WindowEndUnix
+	d.WindowEnd = st.WindowEndUnix
 
 	// prune old history
 	cutoff := now.AddDate(0, 0, -historyDays).Format("2006-01-02")
-	for k := range a.st.Days {
+	for k := range st.Days {
 		if k < cutoff {
-			delete(a.st.Days, k)
+			delete(st.Days, k)
 		}
 	}
 }
 
 func (a *App) pollOnce() {
 	now := time.Now()
-	if used, reset, ok := readInput(a.inputPath); ok {
-		a.sample(used, reset, now)
+	if used, reset, acct, ok := readInput(a.inputPath); ok {
+		a.sampleAccount(acct, used, reset, now)
 	}
 	a.mu.RLock()
 	out := a.output(now)
@@ -483,6 +557,10 @@ func (a *App) pollOnce() {
 
 	if err := writeJSONAtomic(a.outPath, out); err != nil {
 		log.Printf("write stats: %v", err)
+	}
+	if !a.backedUp && stCopy.needsBackup() {
+		backupState(a.statePath)
+		a.backedUp = true
 	}
 	if err := writeJSONAtomic(a.statePath, &stCopy); err != nil {
 		log.Printf("write state: %v", err)
@@ -518,11 +596,34 @@ func writeJSON(w http.ResponseWriter, v any) {
 	_ = enc.Encode(v)
 }
 
+// accountParam returns the ?account= key and whether it names a known
+// account (an empty key means the active one). Caller holds a.mu.
+func (a *App) accountParam(r *http.Request) (string, bool) {
+	key := r.URL.Query().Get("account")
+	if key == "" {
+		return a.st.Active, true
+	}
+	_, ok := a.st.Accounts[key]
+	return key, ok
+}
+
 func (a *App) handleStats(w http.ResponseWriter, r *http.Request) {
 	a.mu.RLock()
-	o := a.output(time.Now())
+	key, ok := a.accountParam(r)
+	o := a.outputFor(key, time.Now())
 	a.mu.RUnlock()
+	if !ok {
+		http.Error(w, "unknown account", http.StatusNotFound)
+		return
+	}
 	writeJSON(w, o)
+}
+
+func (a *App) handleAccounts(w http.ResponseWriter, r *http.Request) {
+	a.mu.RLock()
+	list := a.st.accountList(time.Now())
+	a.mu.RUnlock()
+	writeJSON(w, list)
 }
 
 func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
@@ -533,8 +634,13 @@ func (a *App) handleHistory(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	a.mu.RLock()
-	h := historyOutput(a.st, time.Now(), days)
+	key, ok := a.accountParam(r)
+	h := accountHistory(a.st.account(key), time.Now(), days)
 	a.mu.RUnlock()
+	if !ok {
+		http.Error(w, "unknown account", http.StatusNotFound)
+		return
+	}
 	writeJSON(w, h)
 }
 
@@ -581,6 +687,7 @@ func main() {
 	mux.HandleFunc("/history", app.handleHistory)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) { fmt.Fprintln(w, "ok") })
 	mux.HandleFunc("/service", app.handleService)
+	mux.HandleFunc("/accounts", app.handleAccounts)
 
 	log.Printf("weekstat %s: watching %s → %s, dashboard on http://%s", version, *input, *out, *addr)
 	srv := &http.Server{Addr: *addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}

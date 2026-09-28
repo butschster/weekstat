@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -210,5 +211,21 @@ func TestOutageIconIsPNG(t *testing.T) {
 	b := outageIcon()
 	if len(b) < 8 || string(b[1:4]) != "PNG" {
 		t.Fatalf("not a PNG (%d bytes)", len(b))
+	}
+}
+
+func TestAccountLabels(t *testing.T) {
+	var s stats
+	if accountLine(&s) != "" || accountTag(&s) != "" {
+		t.Error("no account block must give no label")
+	}
+	if err := json.Unmarshal([]byte(`{"account":{"key":"abc","label":"Acme","plan":"max"},"accounts":{"abc":{"label":"Acme"}}}`), &s); err != nil {
+		t.Fatal(err)
+	}
+	if got := accountLine(&s); got != "Account: Acme" {
+		t.Errorf("accountLine = %q", got)
+	}
+	if got := accountTag(&s); got != "Acme" {
+		t.Errorf("accountTag with one account = %q, want Acme (always shown)", got)
 	}
 }

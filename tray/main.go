@@ -66,6 +66,12 @@ type stats struct {
 		PageURL        string `json:"page_url"`
 		Error          string `json:"error"`
 	} `json:"service"`
+	// Account the figures belong to; absent from daemons before per-account tracking.
+	Account *struct {
+		Key   string `json:"key"`
+		Label string `json:"label"`
+		Plan  string `json:"plan"`
+	} `json:"account"`
 }
 
 // pace → (Okabe-Ito colorblind-safe hex, glyph, label)
@@ -84,6 +90,7 @@ func paceMeta(p string) (hex, glyph, label string) {
 var (
 	mVerdict, mToday, mTodayBar, mWeek, mWeekBar, mBudget, mReset *systray.MenuItem
 	mService, mIncident                                           *systray.MenuItem
+	mAccount                                                      *systray.MenuItem
 	mRingToday, mRingWeek                                         *systray.MenuItem
 
 	stMu      sync.Mutex
@@ -114,6 +121,9 @@ func onReady() {
 	systray.SetTooltip("weekstat — weekly quota")
 	systray.SetIcon(icon(0, "#8A8F99"))
 
+	mAccount = systray.AddMenuItem("", "the Claude account these figures belong to")
+	mAccount.Disable()
+	mAccount.Hide()
 	mVerdict = systray.AddMenuItem("connecting…", "current pace")
 	mVerdict.Disable()
 	// Service rows sit in the verdict group: during an outage the pace verdict
@@ -235,6 +245,12 @@ func update() {
 
 func render(s *stats) {
 	renderService(s)
+	if line := accountLine(s); line != "" {
+		mAccount.SetTitle(line)
+		mAccount.Show()
+	} else {
+		mAccount.Hide()
+	}
 	outage := s.Service.Outage
 	if outage {
 		// The panel badge says "API down" instead of the gauge; the dropdown
@@ -271,6 +287,9 @@ func render(s *stats) {
 		systray.SetTitle(title)
 		if s.Service.Level == levelDegraded {
 			tip = serviceLine(s) + " · " + tip
+		}
+		if tag := accountTag(s); tag != "" {
+			tip = tag + " · " + tip
 		}
 		systray.SetTooltip(tip)
 	}

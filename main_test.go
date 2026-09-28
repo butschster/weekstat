@@ -11,7 +11,7 @@ import (
 // ---------------------------------------------------------------------------
 
 func newApp() *App {
-	return &App{st: &State{Days: map[string]*DayStat{}}}
+	return &App{st: newState()}
 }
 
 func at(y int, mo time.Month, d, h, min int) time.Time {
@@ -130,12 +130,15 @@ func TestSampleTwoResetsSameDay(t *testing.T) {
 	r2 := at(2026, time.August, 25, 8, 0)
 	r3 := at(2026, time.September, 1, 8, 0)
 
-	a.sample(90, r1, at(2026, time.August, 18, 7, 0))
-	a.sample(95, r1, at(2026, time.August, 18, 7, 59))
-	a.sample(1, r2, at(2026, time.August, 18, 8, 5))
-	a.sample(3, r2, at(2026, time.August, 18, 9, 0))
-	a.sample(0, r3, at(2026, time.August, 18, 10, 0))
-	a.sample(2, r3, at(2026, time.August, 18, 11, 0))
+	// Keyed: a second window change within two hours only makes sense for one
+	// known account — without a key it would read as another account.
+	acct := AccountInfo{Key: "k1"}
+	a.sampleAccount(acct, 90, r1, at(2026, time.August, 18, 7, 0))
+	a.sampleAccount(acct, 95, r1, at(2026, time.August, 18, 7, 59))
+	a.sampleAccount(acct, 1, r2, at(2026, time.August, 18, 8, 5))
+	a.sampleAccount(acct, 3, r2, at(2026, time.August, 18, 9, 0))
+	a.sampleAccount(acct, 0, r3, at(2026, time.August, 18, 10, 0))
+	a.sampleAccount(acct, 2, r3, at(2026, time.August, 18, 11, 0))
 
 	d := a.st.Days["2026-08-18"]
 	if d.CarrySpent != 7 { // (95-90) + (3-1)
@@ -183,7 +186,7 @@ func TestSamplePrunesOldDays(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestComputeOutputNoData(t *testing.T) {
-	o := computeOutput(&State{Days: map[string]*DayStat{}}, at(2026, time.August, 19, 12, 0))
+	o := computeOutput(newState(), at(2026, time.August, 19, 12, 0))
 	if o.HasData {
 		t.Error("HasData = true for empty state")
 	}

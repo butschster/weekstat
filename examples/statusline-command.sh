@@ -8,11 +8,41 @@
 
 input=$(cat)
 
+# ---- tag the snapshot with this session's account ----
+# Each Claude account has its own weekly window; the daemon keeps them apart by
+# this key. It comes from the session's own config (CLAUDE_CONFIG_DIR aware):
+# key = sha256(accountUuid)[:12], label = the account's email (else the
+# organization name), plan = tier. Only non-secret fields of .claude.json are
+# read; .credentials.json is not. An auto-generated organization name
+# ("<email>'s Organization") is not used as a label.
+# Fields are split on \x1f, not tabs: bash collapses empty tab-separated fields.
+_cj="${CLAUDE_CONFIG_DIR:-$HOME}/.claude.json"
+IFS=$'\x1f' read -r _au _al _ap <<<"$(
+  jq -r '.oauthAccount // {} | [
+    (.accountUuid // ""),
+    (if (.emailAddress // "") != "" then .emailAddress
+     else (.organizationName // "") | if test("@") or endswith("\u0027s Organization") then "" else . end end),
+    (if (.userRateLimitTier // "") != "" then .userRateLimitTier else (.organizationType // "") end)
+  ] | join("\u001f")' "$_cj" 2>/dev/null
+)"
+acct_key=""
+if [ -n "$_au" ]; then
+  if command -v sha256sum >/dev/null; then acct_key=$(printf '%s' "$_au" | sha256sum | cut -c1-12)
+  else acct_key=$(printf '%s' "$_au" | shasum -a 256 | cut -c1-12); fi
+  _tagged=$(printf '%s' "$input" | jq -c --arg k "$acct_key" --arg l "$_al" --arg p "$_ap" \
+    '. + {weekstat: {account: {key: $k, label: $l, plan: $p}}}' 2>/dev/null)
+  [ -n "$_tagged" ] && input=$_tagged     # on a jq failure keep the untagged snapshot
+fi
+
 # ---- feed the weekstat daemon: persist this raw stdin snapshot atomically ----
 # The Go daemon (~/.claude/tools/weekstat) watches this file and turns the
 # rolling 7-day quota into weekly history + a dashboard. Cheap, best-effort.
+# A unique temp file per render: sessions render concurrently, and a shared
+# .tmp would let one session's write clobber another's half-written file.
 _si="$HOME/.claude/.statusline-input.json"
-printf '%s' "$input" > "$_si.tmp" 2>/dev/null && mv -f "$_si.tmp" "$_si" 2>/dev/null
+if [ -n "$input" ] && _st=$(mktemp "$_si.XXXXXX" 2>/dev/null); then
+  { printf '%s' "$input" > "$_st" && mv -f "$_st" "$_si"; } 2>/dev/null || rm -f "$_st"
+fi
 
 # ---- pull everything out in one jq pass (tab-separated; paths may contain spaces) ----
 IFS=$'\t' read -r cwd project_dir model used_pct used_tok max_tok <<<"$(
@@ -134,10 +164,18 @@ if [ -n "$seven_pct" ]; then
   # ---- today's consumption — collected from the weekstat daemon's output ----
   # (delta of used% since the day's first reading; the daemon owns the history).
   # Colour it against the daily budget: red if today already exceeds it.
-  today_spent=$(jq -r '.today.spent_pct // empty' "$HOME/.claude/week-stats.json" 2>/dev/null)
+  # The figures are this session's account's (another session may be the
+  # daemon's active one); nothing until the daemon has seen this account, and
+  # the top level for a daemon without "accounts" or a session without a key.
   # Prefer the daemon's STABLE budget/day (start-of-day remaining ÷ whole days
   # left) over the naive stdin estimate, so today's own spend doesn't move it.
-  ws_budget=$(jq -r '.quota.budget_per_day_pct // empty' "$HOME/.claude/week-stats.json" 2>/dev/null)
+  IFS=$'\x1f' read -r today_spent ws_budget acct_label <<<"$(
+    jq -r --arg k "$acct_key" '(if $k != "" and .accounts != null
+        then (.accounts[$k] // {}) | {t: .today_spent_pct, b: .budget_per_day_pct, l: .label}
+        else {t: .today.spent_pct, b: .quota.budget_per_day_pct, l: null} end) as $v | [
+      ($v.t // ""), ($v.b // ""), ($v.l // "")
+    ] | map(tostring) | join("\u001f")' "$HOME/.claude/week-stats.json" 2>/dev/null
+  )"
   [ -n "$ws_budget" ] && budget_day=$ws_budget
   tcol='\033[2m'
   if [ -n "$today_spent" ] && [ -n "$budget_day" ]; then
@@ -150,6 +188,10 @@ if [ -n "$seven_pct" ]; then
   # ---- render line 2 ----
   printf '\n'
   [ "$svc_outage" = "true" ] && printf '\033[1;31m ⛔ %s\033[0m \033[2m·\033[0m' "${svc_label:-outage}"
+  # name the account this line is about: the local part of its email (or the
+  # daemon's "plan · key" label until it has one)
+  acct_show=${_al:-$acct_label}
+  [ -n "$acct_show" ] && printf ' \033[36m%s\033[0m' "${acct_show%%@*}"
   printf '\033[2m wk:\033[0m %b%s\033[0m' "$pcol" "$qbar"
   printf ' \033[2mleft\033[0m %s%%' "$remain_pct"
   [ -n "$today_spent" ] && printf ' \033[2m·\033[0m \033[2mtoday\033[0m %b%.0f%%\033[0m' "$tcol" "$today_spent"

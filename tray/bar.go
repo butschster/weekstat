@@ -187,6 +187,24 @@ func todayHex(spent, budget float64) string {
 	}
 }
 
+// accountLine is the dropdown row naming the active account ("" when the
+// daemon does not report one).
+func accountLine(s *stats) string {
+	if s.Account == nil || s.Account.Label == "" {
+		return ""
+	}
+	return "Account: " + s.Account.Label
+}
+
+// accountTag names the account in the tooltip — always, so it's clear whose
+// quota the ring shows even with a single account.
+func accountTag(s *stats) string {
+	if s.Account == nil {
+		return ""
+	}
+	return s.Account.Label
+}
+
 // ringSpec decides what the panel icon shows for the chosen mode: the arc's
 // fill fraction, its color, the text next to the icon, and the tooltip.
 func ringSpec(mode string, s *stats) (frac float64, hex, title, tip string) {
