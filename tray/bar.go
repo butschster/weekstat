@@ -7,8 +7,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 )
 
 const (
@@ -187,13 +189,67 @@ func todayHex(spent, budget float64) string {
 	}
 }
 
-// accountLine is the dropdown row naming the active account ("" when the
-// daemon does not report one).
-func accountLine(s *stats) string {
+// accountLine is the dropdown row naming the account shown ("" when the
+// daemon does not report one). With two or more accounts it also says whether
+// the figures are pinned to that account or follow the active one.
+func accountLine(s *stats, pinned bool) string {
 	if s.Account == nil || s.Account.Label == "" {
 		return ""
 	}
-	return "Account: " + s.Account.Label
+	line := "Account: " + s.Account.Label
+	if len(s.Accounts) >= 2 {
+		if pinned {
+			line += " · pinned"
+		} else {
+			line += " · active"
+		}
+	}
+	return line
+}
+
+// accountChoice is one entry of the account submenu.
+type accountChoice struct {
+	Key, Label, Plan string
+	Active           bool
+}
+
+// accountChoices is every account the daemon knows, by label (then key) so
+// the submenu does not reorder when the active account changes.
+func accountChoices(s *stats) []accountChoice {
+	out := make([]accountChoice, 0, len(s.Accounts))
+	for k, a := range s.Accounts {
+		out = append(out, accountChoice{Key: k, Label: a.Label, Plan: a.Plan, Active: a.Active})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Label != out[j].Label {
+			return out[i].Label < out[j].Label
+		}
+		return out[i].Key < out[j].Key
+	})
+	return out
+}
+
+// choiceTitle is the submenu row of an account.
+func choiceTitle(c accountChoice) string {
+	t := c.Label
+	if t == "" {
+		t = c.Key
+	}
+	if c.Plan != "" {
+		t += " · " + c.Plan
+	}
+	if c.Active {
+		t += "  (active)"
+	}
+	return t
+}
+
+// statsURLFor is the daemon's /stats for one account ("" = the active one).
+func statsURLFor(base, key string) string {
+	if key == "" {
+		return base
+	}
+	return base + "?account=" + url.QueryEscape(key)
 }
 
 // accountTag names the account in the tooltip — always, so it's clear whose
@@ -231,7 +287,8 @@ func ringSpec(mode string, s *stats) (frac float64, hex, title, tip string) {
 // ---------------------------------------------------------------------------
 
 type prefs struct {
-	Ring string `json:"ring"` // "week" | "today"
+	Ring    string `json:"ring"`              // "week" | "today"
+	Account string `json:"account,omitempty"` // account key the tray is pinned to; "" follows the active one
 }
 
 func defaultPrefsPath() string {
@@ -239,18 +296,21 @@ func defaultPrefsPath() string {
 	return filepath.Join(home, ".claude", ".weekstat-tray.json")
 }
 
-func loadRing(path string) string {
+// loadPrefs reads the preference file; a missing file or an unknown ring
+// value gives the defaults (weekly ring, follow the active account).
+func loadPrefs(path string) prefs {
 	var p prefs
-	if b, err := os.ReadFile(path); err == nil && json.Unmarshal(b, &p) == nil {
-		if p.Ring == ringToday || p.Ring == ringWeek {
-			return p.Ring
-		}
+	if b, err := os.ReadFile(path); err == nil {
+		_ = json.Unmarshal(b, &p)
 	}
-	return ringWeek
+	if p.Ring != ringToday && p.Ring != ringWeek {
+		p.Ring = ringWeek
+	}
+	return p
 }
 
-func saveRing(path, ring string) {
-	b, _ := json.Marshal(prefs{Ring: ring})
+func savePrefs(path string, p prefs) {
+	b, _ := json.Marshal(p)
 	_ = os.MkdirAll(filepath.Dir(path), 0o755)
 	_ = os.WriteFile(path, b, 0o644)
 }

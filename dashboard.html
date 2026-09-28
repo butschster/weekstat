@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
+<link rel="icon" href="data:,">
 <title>weekstat · weekly quota</title>
 <style>
   :root{
@@ -158,6 +159,47 @@
   .tip .num{color:var(--text);}
   .tip .mu{color:var(--text-3);}
 
+  /* ---- All accounts: strip + small multiples ---- */
+  [hidden]{display:none!important;}
+  .accts{margin-top:20px;padding-bottom:6px;}
+  .ph .to-all{font:12px var(--sans);color:var(--cyan);background:none;border:0;padding:0;cursor:pointer;text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:1px;}
+  .ph .to-all:hover{color:#8BE3FF;}
+  .arows{padding:4px 0 0;}
+  .arow,.ahead{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(150px,1.5fr) 74px 92px 132px 84px;gap:0 16px;align-items:center;padding:9px 16px;}
+  .ahead{padding-top:4px;padding-bottom:6px;font-size:12px;color:var(--text-3);border-bottom:1px solid var(--rule);}
+  .ahead span:nth-child(3),.ahead span:nth-child(4),.ahead span:nth-child(6),.arow .c-today,.arow .c-budget,.arow .c-reset{text-align:right;}
+  .arow{width:100%;font:inherit;color:inherit;text-align:left;background:none;border:0;border-bottom:1px solid var(--rule);cursor:pointer;}
+  .arow:last-child{border-bottom:0;}
+  .arow:hover{background:var(--panel-2);}
+  .arow[aria-current="true"]{background:color-mix(in srgb,var(--cyan) 6%,transparent);}
+  .arow[aria-current="true"] .an{color:var(--cyan);}
+  .arow .c-acct{display:flex;align-items:baseline;gap:8px;min-width:0;}
+  .an{font:12.5px var(--mono);color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;}
+  .pl{font-size:12px;color:var(--text-3);white-space:nowrap;}
+  .use-dot{width:7px;height:7px;border-radius:50%;background:var(--ok);flex:none;align-self:center;}
+  .use-dot.off{background:none;}
+  .arow .c-rem{display:flex;align-items:center;gap:10px;}
+  .arow .c-rem .gauge{flex:1;grid-column:auto;margin:0;}
+  .arow .c-rem .gauge i{transition:none;}
+  .arow .c-rem .gauge s{width:2px;}
+  .arow .rv{font:500 15px var(--mono);font-variant-numeric:tabular-nums;min-width:46px;text-align:right;}
+  .arow .c-today,.arow .c-budget,.arow .c-reset{font:500 13px var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap;}
+  .arow .c-pace{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;white-space:nowrap;}
+  .arow .c-pace svg{width:16px;height:16px;flex:none;}
+  .arow .cl{display:none;}
+  .stale{color:var(--text-3);font-family:var(--sans);font-weight:400;font-size:12px;}
+  .multiples{margin-top:20px;padding-bottom:12px;}
+  .mgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:12px;padding:10px 16px 2px;}
+  .mcard{display:block;width:100%;min-width:0;font:inherit;color:inherit;text-align:left;background:none;border:1px solid var(--rule);border-radius:var(--r);padding:10px 0 8px;cursor:pointer;}
+  .mcard:hover{border-color:#2E3E4E;background:var(--panel-2);}
+  .mcard .mh{display:flex;align-items:baseline;gap:8px;padding:0 12px 2px;}
+  .mcard .st{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;white-space:nowrap;}
+  .mcard .st svg{width:14px;height:14px;align-self:center;}
+  .mcard .st .num{color:var(--text-2);font-weight:500;}
+  .mcard .mbox{display:block;padding:0 4px;}
+  .mcard .mf{display:flex;justify-content:space-between;gap:10px;padding:0 12px;font-size:12px;color:var(--text-3);}
+  .mcard .mf .num{color:var(--text-2);}
+
   .flash{animation:flash .6s cubic-bezier(.22,1,.36,1);}
   @keyframes flash{from{color:var(--cyan);}to{}}
 
@@ -183,6 +225,12 @@
     .leg .sh{text-align:right;}
     .leg.today{box-shadow:none;border-top-color:color-mix(in srgb,var(--cyan) 35%,#223040);}
     .ro .v{font-size:18px;}
+    .ahead{display:none;}
+    .arow{grid-template-columns:minmax(0,1fr) auto auto;grid-template-areas:"acct acct pace" "rem rem rem" "today budget reset";gap:6px 12px;padding:10px 14px;}
+    .arow .c-acct{grid-area:acct;} .arow .c-pace{grid-area:pace;justify-self:end;} .arow .c-rem{grid-area:rem;}
+    .arow .c-today{grid-area:today;text-align:left;} .arow .c-budget{grid-area:budget;} .arow .c-reset{grid-area:reset;}
+    .arow .cl{display:inline;font:12px var(--sans);color:var(--text-3);}
+    .mgrid{padding:10px 10px 2px;}
   }
   @media (prefers-reduced-motion: reduce){
     *{animation:none!important;transition:none!important;}
@@ -228,10 +276,26 @@
   </div>
   <div class="ann warn" id="alarm" role="alert">
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5 L15 14 H1 Z" fill="none" stroke="#FF5A4F" stroke-width="1.5" stroke-linejoin="round"/><line x1="8" y1="6" x2="8" y2="9.6" stroke="#FF5A4F" stroke-width="1.6" stroke-linecap="round"/><circle cx="8" cy="11.8" r=".9" fill="#FF5A4F"/></svg>
-    <span><b>Over budget</b> <span class="sub">— at this week's rate the quota runs out before the reset.</span></span>
+    <span><b>Over budget</b> <span class="sub" id="alarm-sub">— at this week's rate the quota runs out before the reset.</span></span>
   </div>
 
-  <main class="deck">
+  <section class="panel accts" id="accts" aria-labelledby="accts-h" hidden>
+    <div class="ph"><h2 id="accts-h">Accounts</h2><span class="hint" id="accts-hint">bar: quota remaining · magenta tick: what an even pace would leave now</span><button class="to-all" id="toAll" type="button" hidden>All accounts</button></div>
+    <div class="ahead" aria-hidden="true"><span>Account</span><span>Remaining</span><span>Today</span><span>Budget/day</span><span>Pace</span><span>Resets in</span></div>
+    <div class="arows" id="arows"></div>
+  </section>
+
+  <section class="panel multiples" id="multiples" aria-labelledby="mult-h" hidden>
+    <div class="ph"><h2 id="mult-h">Burn profile — every account</h2><span class="hint">each on its own 7-day window · select one for detail</span></div>
+    <div class="mgrid" id="mgrid"></div>
+    <div class="legend">
+      <span><i style="border-color:var(--text)"></i>Actual</span>
+      <span><span class="band"></span>Even-pace plan</span>
+      <span><i style="border-color:var(--text-2);border-top-style:dashed"></i>Projection, in the pace colour</span>
+    </div>
+  </section>
+
+  <main class="deck" id="deck">
     <section class="panel profile" aria-labelledby="prof-h">
       <div class="ph"><h2 id="prof-h">Burn profile — this window</h2><span class="hint" id="prof-hint">actual vs even-pace plan</span></div>
       <div class="chart-box" id="profBox">
@@ -277,7 +341,7 @@
     </aside>
   </main>
 
-  <section class="panel history" aria-labelledby="hist-h">
+  <section class="panel history" id="hist" aria-labelledby="hist-h">
     <div class="ph"><h2 id="hist-h">Daily burn — last 30 days</h2><span class="hint">% of the quota per day</span></div>
     <div class="chart-box" id="histBox">
       <svg class="chart" id="chartA" role="img" aria-labelledby="chartA-t chartA-d"><title id="chartA-t">Quota burned per day, last 30 days</title><desc id="chartA-d">Column chart, one column per day. A dashed magenta line marks an even day (a seventh of the quota); columns over one and a half even days are amber, over two are red; magenta rules mark weekly resets; today is cyan.</desc></svg>
@@ -355,11 +419,40 @@
   }
 
   // ============ Derived figures ============
+  // the live head: hours into the window and % used
+  function headOf(elapsedPct, usedPct){
+    return {h:clamp(num(elapsedPct)/100*WINDOW_H,0,WINDOW_H), v:clamp(num(usedPct),0,100)};
+  }
   function head(){
     const q=(stats&&stats.quota)||{}, w=(stats&&stats.window)||{};
-    const h=clamp(num(w.elapsed_pct)/100*WINDOW_H,0,WINDOW_H), v=clamp(num(q.used_pct),0,100);
-    const rate=h>0.5? v/h : null;             // %/h over the window so far
-    return {h, v, rate, end: rate===null? null : rate*WINDOW_H};
+    return headOf(w.elapsed_pct, q.used_pct);
+  }
+  // burnSeries is the window's actual burn: history points of this window plus
+  // the live head, cumulative (never decreasing) within a segment; a drop of
+  // RESET_DROP points or more is an early manual reset: the line goes down with
+  // it and starts climbing again (issue #6).
+  function burnSeries(recs, end, hd){
+    const curWin=end? String(end).slice(0,10) : null;
+    const pts=[[0,0]];
+    if(Array.isArray(recs)) recs.forEach(r=>{ if(curWin && r.window_id===curWin) pts.push([num(r.window_elapsed_h),num(r.used_pct_eod)]); });
+    pts.push([hd.h,hd.v]);
+    pts.sort((a,b)=>a[0]-b[0]);
+    const RESET_DROP=10;
+    let mx=0; const mono=[], resets=[];
+    for(const p of pts){
+      if(mono.length && p[1]<=mx-RESET_DROP){ mx=p[1]; resets.push(p); } else mx=Math.max(mx,p[1]);
+      if(mono.length && mono[mono.length-1][0]===p[0]) mono[mono.length-1][1]=mx; else mono.push([p[0],mx]);
+    }
+    return {mono, resets};
+  }
+  // projection to the reset at the rate since the last manual reset (else since
+  // the window start); null until half an hour is logged. hit: hours into the
+  // window where the quota runs out at that rate.
+  function projection(hd, resets){
+    const b=resets.length? resets[resets.length-1] : [0,0], dh=hd.h-b[0];
+    if(dh<=0.5) return null;
+    const rate=Math.max(0,(hd.v-b[1])/dh), end=hd.v+rate*(WINDOW_H-hd.h);
+    return {rate, end, from:b[0], hit: rate>0? hd.h+(100-hd.v)/rate : null};
   }
   const paceOf=()=>{ const q=(stats&&stats.quota)||{}; return PACE[q.pace]? q.pace : "on_track"; };
   // amber past 1.5 even days, red past two: a busy weekday is normal, not a warning
@@ -422,17 +515,18 @@
 
     setNum("f-budget", fmt(budget,1)); setNum("f-days", fmt(daysLeft,1));
 
-    // landing: projection to the reset at the window's average rate
-    const hd=head(), landEl=$("f-land");
-    if(!stats.has_data || hd.end===null){
+    // landing: projection to the reset at the rate since the window start (or the last manual reset)
+    const hd=head(), pj=projection(hd, burnSeries(history&&history.records, w.end, hd).resets), landEl=$("f-land");
+    const rateWord=pj&&pj.from>0? "the rate since the reset" : "this week's rate";
+    if(!stats.has_data || !pj){
       landEl.innerHTML="–"; setText("f-land-m","projected once a few hours are logged");
-    } else if(hd.end>100){
-      const ws=parseLocal(w.start), hit=ws? new Date(ws.getTime()+100/hd.rate*3600e3) : null;
+    } else if(pj.end>100){
+      const ws=parseLocal(w.start), hit=ws? new Date(ws.getTime()+pj.hit*3600e3) : null;
       landEl.innerHTML=`<span class="num" style="color:var(--warn)">empty</span>`;
       $("f-land-m").innerHTML= hit? `at this rate the quota runs out <span class="num">${DOW[hit.getDay()]} ${pad(hit.getHours())}:${pad(hit.getMinutes())}</span>, before the reset` : "at this rate the quota runs out before the reset";
     } else {
-      landEl.innerHTML=`<span class="num">${fmt(100-hd.end)}</span><span class="u">% left</span>`;
-      $("f-land-m").innerHTML=`<span class="num">${fmt(hd.end)}</span>% used by the reset at this week's rate`;
+      landEl.innerHTML=`<span class="num">${fmt(100-pj.end)}</span><span class="u">% left</span>`;
+      $("f-land-m").innerHTML=`<span class="num">${fmt(pj.end)}</span>% used by the reset at ${rateWord}`;
     }
 
     // annunciators + tab title
@@ -445,6 +539,8 @@
     $("updated").title = stats.updated_at? "last reading "+stats.updated_at : "";
     if(stats.version) setText("foot-ver", stats.version);
 
+    $("alarm-sub").textContent="— at this week's rate the quota runs out before the reset.";
+    if(isAll()){ $("route").hidden=true; return; } // the detail charts are hidden
     drawLegs();
     if(history) drawChartB();
   }
@@ -480,9 +576,10 @@
   }
   let GB=null; // last burn-profile geometry
 
-  function windowDays(){
+  const windowDays=()=>windowDaysOf(((stats&&stats.window)||{}).start);
+  function windowDaysOf(start){
     // calendar days overlapping the window, with their span in window hours
-    const w=(stats&&stats.window)||{}, ws=parseLocal(w.start);
+    const ws=parseLocal(start);
     if(!ws) return [];
     const out=[], first=new Date(ws.getFullYear(),ws.getMonth(),ws.getDate());
     for(let i=0;i<9;i++){
@@ -500,76 +597,10 @@
   function drawChartB(){
     const svg=$("chartB"), box=$("profBox");
     const G=GB=geom(box, box.clientWidth<560? 230 : 290);
-    svg.setAttribute("viewBox",`0 0 ${G.W} ${G.H}`); svg.setAttribute("height",G.H);
-    while(svg.lastChild && svg.lastChild.nodeName!=="title" && svg.lastChild.nodeName!=="desc") svg.removeChild(svg.lastChild);
-    const pw=G.W-G.ml-G.mr, ph=G.H-G.mt-G.mb;
-    const x=h=>G.ml+clamp(h,0,WINDOW_H)/WINDOW_H*pw, y=v=>G.mt+(1-clamp(v,0,100)/100)*ph;
-    const add=(el,a,parent)=>{ const e=document.createElementNS(SVGNS,el); for(const k in a) e.setAttribute(k,a[k]); (parent||svg).appendChild(e); return e; };
-    const txt=(s,a)=>{ const e=add("text",a); e.textContent=s; return e; };
-
-    const q=(stats&&stats.quota)||{}, w=(stats&&stats.window)||{};
-    const pk=paceOf(), stateRaw=PACE[pk].raw;
-    const half=EVEN_DAY/2; // plan tolerance: half an even day, fixed for the window
-    const todayKey=(stats&&stats.today&&stats.today.date)||"";
-
-    for(let v=0;v<=100;v+=25){
-      add("line",{x1:G.ml,y1:y(v),x2:G.W-G.mr,y2:y(v),class:"grid"});
-      txt(v,{x:G.ml-7,y:y(v)+3.5,"text-anchor":"end",class:"ax"});
-    }
-    // day boundaries at local midnight, labelled under their day
-    windowDays().forEach((d,i)=>{
-      if(i>0) add("line",{x1:x(d.h0),y1:G.mt,x2:x(d.h0),y2:G.mt+ph,class:"grid day"});
-      const span=x(d.h1)-x(d.h0);
-      if(span>26) txt(span>54? `${DOW[d.d.getDay()]} ${d.d.getDate()}` : String(d.d.getDate()),
-        {x:(x(d.h0)+x(d.h1))/2,y:G.H-9,"text-anchor":"middle",class:"ax day"+(d.date===todayKey?" today":"")});
-    });
-
-    // even-pace plan: magenta line + band of ± one day's budget
-    const band=[], N=24;
-    for(let i=0;i<=N;i++){ const hh=i/N*WINDOW_H; band.push([x(hh), y(100*hh/WINDOW_H+half)]); }
-    for(let i=N;i>=0;i--){ const hh=i/N*WINDOW_H; band.push([x(hh), y(100*hh/WINDOW_H-half)]); }
-    add("path",{d:"M"+band.map(p=>p.join(",")).join(" L")+" Z",fill:"color-mix(in srgb, var(--plan) 11%, transparent)"});
-    add("line",{x1:x(0),y1:y(0),x2:x(WINDOW_H),y2:y(100),stroke:"var(--plan)","stroke-width":1.5});
-    txt("plan",{x:x(WINDOW_H)-4,y:y(100)+14,"text-anchor":"end",class:"plan-lbl"});
-
-    // actual: history points in this window + the live head, cumulative (never decreasing)
-    // within a segment; a drop of RESET_DROP points or more is an early manual reset:
-    // the line goes down with it and starts climbing again (issue #6)
-    const curWin=w.end? String(w.end).slice(0,10) : null;
-    const pts=[[0,0]];
-    if(history&&Array.isArray(history.records)) history.records.forEach(r=>{ if(curWin && r.window_id===curWin) pts.push([num(r.window_elapsed_h),num(r.used_pct_eod)]); });
-    const hd=head(); pts.push([hd.h,hd.v]);
-    pts.sort((a,b)=>a[0]-b[0]);
-    const RESET_DROP=10;
-    let mx=0; const mono=[], resets=[];
-    for(const p of pts){
-      if(mono.length && p[1]<=mx-RESET_DROP){ mx=p[1]; resets.push(p); } else mx=Math.max(mx,p[1]);
-      if(mono.length && mono[mono.length-1][0]===p[0]) mono[mono.length-1][1]=mx; else mono.push([p[0],mx]);
-    }
-
-    // projection to the reset, in the pace colour
-    if(stats&&stats.has_data&&hd.end!==null){
-      add("line",{x1:x(hd.h),y1:y(hd.v),x2:x(WINDOW_H),y2:y(Math.min(hd.end,100)),stroke:stateRaw,"stroke-width":1.5,"stroke-dasharray":"5 5",opacity:.9});
-      if(hd.end<=100){
-        txt(`${fmt(hd.end)}% at reset`,{x:x(WINDOW_H)-4,y:y(hd.end)+(hd.end>88?16:-7),"text-anchor":"end",fill:stateRaw,style:"font:12px var(--sans)"});
-      } else {
-        const hit=100/hd.rate;
-        add("rect",{x:x(hit),y:G.mt,width:x(WINDOW_H)-x(hit),height:ph,fill:"color-mix(in srgb, var(--warn) 10%, transparent)"});
-        txt("runs out",{x:Math.min(x(hit)+5,G.W-G.mr-50),y:G.mt+12,class:"warn-lbl"});
-      }
-    }
-    // actual line; stretches above the plan band take the pace colour
-    const d="M"+mono.map(p=>x(p[0])+","+y(p[1])).join(" L");
-    add("path",{d,fill:"none",stroke:"var(--text)","stroke-width":2.2,"stroke-linejoin":"round","stroke-linecap":"round"});
-    for(let i=1;i<mono.length;i++){
-      const a=mono[i-1], b=mono[i], mh=(a[0]+b[0])/2, mv=(a[1]+b[1])/2;
-      if(mv>100*mh/WINDOW_H+half) add("line",{x1:x(a[0]),y1:y(a[1]),x2:x(b[0]),y2:y(b[1]),stroke:stateRaw,"stroke-width":2.4,"stroke-linecap":"round"});
-    }
-    resets.forEach(p=>{
-      add("line",{x1:x(p[0]),y1:G.mt,x2:x(p[0]),y2:G.mt+ph,stroke:"var(--text-2)","stroke-width":1,"stroke-dasharray":"2 4",opacity:.6});
-      txt("↺ reset",{x:x(p[0])+4,y:G.mt+12,style:"font:12px var(--sans)",fill:"var(--text-2)"});
-    });
-    add("circle",{cx:x(hd.h),cy:y(hd.v),r:4.5,fill:"var(--text)",stroke:"var(--panel)","stroke-width":2});
+    const w=(stats&&stats.window)||{}, q=(stats&&stats.quota)||{};
+    const {mono,hd,x,y,pw}=drawBurn(svg, G, {start:w.start, end:w.end, pace:paceOf(), hasData:!!(stats&&stats.has_data),
+      hd:head(), recs:history&&history.records, todayKey:(stats&&stats.today&&stats.today.date)||"", step:25});
+    const half=EVEN_DAY/2;
 
     setText("prof-hint", `plan band ± ½ even day (${fmt(half,1)}%) · ${fmt(hd.h,0)} of 168 h`);
     const cb=$("chartB-collect"), dayN=Math.max(1,Math.ceil(num(w.elapsed_pct)/100*7));
@@ -589,6 +620,85 @@
       tip.classList.add("show");
     };
     svg.onmouseleave=()=>tip.classList.remove("show");
+  }
+
+  // drawBurn draws one window's burn profile into svg (children other than
+  // title/desc are replaced): plan band and line, actual burn with early manual
+  // resets, projection to the reset. o: {start, end, pace, hasData, hd, recs,
+  // todayKey, step, compact} — step is the % grid step; compact drops the
+  // "plan" label (the small multiples carry it in their legend).
+  function drawBurn(svg, G, o){
+    svg.setAttribute("viewBox",`0 0 ${G.W} ${G.H}`); svg.setAttribute("height",G.H);
+    while(svg.lastChild && svg.lastChild.nodeName!=="title" && svg.lastChild.nodeName!=="desc") svg.removeChild(svg.lastChild);
+    const pw=G.W-G.ml-G.mr, ph=G.H-G.mt-G.mb;
+    const x=h=>G.ml+clamp(h,0,WINDOW_H)/WINDOW_H*pw, y=v=>G.mt+(1-clamp(v,0,100)/100)*ph;
+    const add=(el,a,parent)=>{ const e=document.createElementNS(SVGNS,el); for(const k in a) e.setAttribute(k,a[k]); (parent||svg).appendChild(e); return e; };
+    const txt=(s,a)=>{ const e=add("text",a); e.textContent=s; return e; };
+
+    const stateRaw=PACE[o.pace].raw;
+    const half=EVEN_DAY/2; // plan tolerance: half an even day, fixed for the window
+    const todayKey=o.todayKey;
+
+    for(let v=0;v<=100;v+=o.step){
+      add("line",{x1:G.ml,y1:y(v),x2:G.W-G.mr,y2:y(v),class:"grid"});
+      txt(v,{x:G.ml-7,y:y(v)+3.5,"text-anchor":"end",class:"ax"});
+    }
+    // day boundaries at local midnight, labelled under their day
+    windowDaysOf(o.start).forEach((d,i)=>{
+      if(i>0) add("line",{x1:x(d.h0),y1:G.mt,x2:x(d.h0),y2:G.mt+ph,class:"grid day"});
+      const span=x(d.h1)-x(d.h0);
+      if(span>26) txt(span>54? `${DOW[d.d.getDay()]} ${d.d.getDate()}` : String(d.d.getDate()),
+        {x:(x(d.h0)+x(d.h1))/2,y:G.H-9,"text-anchor":"middle",class:"ax day"+(d.date===todayKey?" today":"")});
+    });
+
+    // even-pace plan: magenta line + band of ± one day's budget
+    const band=[], N=24;
+    for(let i=0;i<=N;i++){ const hh=i/N*WINDOW_H; band.push([x(hh), y(100*hh/WINDOW_H+half)]); }
+    for(let i=N;i>=0;i--){ const hh=i/N*WINDOW_H; band.push([x(hh), y(100*hh/WINDOW_H-half)]); }
+    add("path",{d:"M"+band.map(p=>p.join(",")).join(" L")+" Z",fill:"color-mix(in srgb, var(--plan) 11%, transparent)"});
+    add("line",{x1:x(0),y1:y(0),x2:x(WINDOW_H),y2:y(100),stroke:"var(--plan)","stroke-width":1.5});
+    if(!o.compact) txt("plan",{x:x(WINDOW_H)-4,y:y(100)+14,"text-anchor":"end",class:"plan-lbl"});
+
+    // actual burn, and the projection to the reset in the pace colour
+    const hd=o.hd, {mono, resets}=burnSeries(o.recs, o.end, hd), pj=projection(hd, resets);
+    let projLabel=null;
+    if(o.hasData&&pj){
+      add("line",{x1:x(hd.h),y1:y(hd.v),x2:x(WINDOW_H),y2:y(Math.min(pj.end,100)),stroke:stateRaw,"stroke-width":1.5,"stroke-dasharray":"5 5",opacity:.9});
+      if(pj.end<=100){
+        const ye=y(pj.end);
+        projLabel={t:`${fmt(pj.end)}% at reset`, a:{fill:stateRaw,style:"font:12px var(--sans)"},
+          spots:[[x(WINDOW_H)-4,ye-7],[x(WINDOW_H)-4,ye+16],[x(hd.h)-10,y(hd.v)+18],[x(hd.h)-10,y(hd.v)-10]]};
+      } else {
+        const xh=x(pj.hit);
+        add("rect",{x:xh,y:G.mt,width:x(WINDOW_H)-xh,height:ph,fill:"color-mix(in srgb, var(--warn) 10%, transparent)"});
+        projLabel={t:"runs out", a:{class:"warn-lbl"},
+          spots:[[xh+58,G.mt+12],[xh-4,G.mt+12],[xh-4,y(hd.v)+18],[x(hd.h)-10,y(hd.v)+18],[xh-4,G.mt+ph-6]]};
+      }
+    }
+    // actual line; stretches above the plan band take the pace colour
+    const d="M"+mono.map(p=>x(p[0])+","+y(p[1])).join(" L");
+    add("path",{d,fill:"none",stroke:"var(--text)","stroke-width":2.2,"stroke-linejoin":"round","stroke-linecap":"round"});
+    for(let i=1;i<mono.length;i++){
+      const a=mono[i-1], b=mono[i], mh=(a[0]+b[0])/2, mv=(a[1]+b[1])/2;
+      if(mv>100*mh/WINDOW_H+half) add("line",{x1:x(a[0]),y1:y(a[1]),x2:x(b[0]),y2:y(b[1]),stroke:stateRaw,"stroke-width":2.4,"stroke-linecap":"round"});
+    }
+    resets.forEach(p=>{
+      add("line",{x1:x(p[0]),y1:G.mt,x2:x(p[0]),y2:G.mt+ph,stroke:"var(--text-2)","stroke-width":1,"stroke-dasharray":"2 4",opacity:.6});
+      txt("↺ reset",{x:x(p[0])+4,y:G.mt+12,style:"font:12px var(--sans)",fill:"var(--text-2)"});
+    });
+    add("circle",{cx:x(hd.h),cy:y(hd.v),r:4.5,fill:"var(--text)",stroke:"var(--panel)","stroke-width":2});
+    if(projLabel){
+      // the projection's label goes to the first of its spots (right edge, baseline)
+      // clear of the live head, the reset labels and the plan label
+      const lw=projLabel.t.length*6.6, busy=[[x(hd.h)-8,y(hd.v)-8,x(hd.h)+8,y(hd.v)+8]];
+      resets.forEach(p=>busy.push([x(p[0])+2,G.mt,x(p[0])+60,G.mt+16]));
+      if(!o.compact) busy.push([x(WINDOW_H)-34,y(100)+2,x(WINDOW_H),y(100)+17]);
+      const clear=([xr,yb])=>xr-lw>=G.ml && xr<=G.W-G.mr && yb-11>=G.mt-4 && yb<=G.mt+ph-2 &&
+        !busy.some(b=>xr-lw<b[2] && xr>b[0] && yb-11<b[3] && yb+3>b[1]);
+      const [lx,ly]=projLabel.spots.find(clear)||projLabel.spots[0];
+      txt(projLabel.t,Object.assign({x:lx,y:ly,"text-anchor":"end"},projLabel.a));
+    }
+    return {mono, hd, x, y, pw, ph};
   }
 
   // ============ Leg log: one cell per day, under its span of the curve ============
@@ -683,37 +793,127 @@
   }
 
   // ============ Accounts ============
-  // "" follows the daemon's active account
-  let account="";
-  try{ account=localStorage.getItem("weekstat.account")||""; }catch(e){}
+  // Stored choice: "all" (every account at once), "active" (follow the daemon's
+  // active account) or an account key. Nothing stored: "all" with two or more
+  // accounts, else the active one.
+  let account="", wantAll=true;
+  try{
+    const saved=localStorage.getItem("weekstat.account");
+    if(saved!==null){ wantAll=saved==="all"; account=(saved==="all"||saved==="active")? "" : saved; }
+  }catch(e){}
   const acctQ=()=>account? "account="+encodeURIComponent(account) : "";
+  const summaries=()=>(stats&&stats.accounts)||{};
+  const acctKeys=()=>{ const all=summaries(); return Object.keys(all).sort((a,b)=>all[a].label.localeCompare(all[b].label)||a.localeCompare(b)); };
+  const isAll=()=>wantAll && acctKeys().length>=2;
   // acctGen bumps on every account change; a response fetched for an earlier
   // choice is dropped, so a slow reply can't paint the wrong account.
   let acctGen=0;
+  // k: "all", "" (active), a key, or null to forget the choice (back to the default)
   function chooseAccount(k){
-    account=k; acctGen++;
-    try{ k? localStorage.setItem("weekstat.account",k) : localStorage.removeItem("weekstat.account"); }catch(e){}
+    wantAll = k==="all" || k===null;
+    account = (k===null||k==="all")? "" : k;
+    acctGen++;
+    try{ k===null? localStorage.removeItem("weekstat.account") : localStorage.setItem("weekstat.account", k||"active"); }catch(e){}
     history=null; prev.acct=null;
   }
-  function setAccount(k){ chooseAccount(k); tick(true); }
+  function setAccount(k){ chooseAccount(k); tick(true); window.scrollTo({top:0,behavior:reduceMotion?"auto":"smooth"}); }
   function renderAccounts(){
     // the account on screen is always named; the switcher appears with a second one
     const cur=stats&&stats.account, nameEl=$("acctName");
-    nameEl.hidden=!cur;
     if(cur){ nameEl.textContent=cur.label; nameEl.title="Claude account: "+cur.label+(cur.plan?" · "+cur.plan:""); }
-    const sel=$("acctSel"), all=(stats&&stats.accounts)||{};
-    const keys=Object.keys(all).sort((a,b)=>all[a].label.localeCompare(all[b].label));
-    sel.hidden=keys.length<2;
-    nameEl.hidden=!cur || !sel.hidden;
-    const sig=keys.map(k=>k+"="+all[k].label+(all[k].active?"*":"")).join("|")+"#"+account;
-    if(sel.hidden || prev.acct===sig) return;
+    const sel=$("acctSel"), all=summaries(), keys=acctKeys(), multi=keys.length>=2, allv=isAll();
+    sel.hidden=!multi;
+    nameEl.hidden=!cur || multi;
+    $("accts").hidden=!multi;
+    $("multiples").hidden=!allv;
+    $("deck").hidden=allv; $("hist").hidden=allv;
+    $("toAll").hidden=allv;
+    $("accts-hint").hidden=!allv;
+    if(multi) renderStrip(keys, all);
+    const sig=keys.map(k=>k+"="+all[k].label+(all[k].active?"*":"")).join("|")+"#"+account+(allv?"#all":"");
+    if(!multi || prev.acct===sig) return;
     prev.acct=sig;
     const active=keys.find(k=>all[k].active);
-    sel.innerHTML=[`<option value="">Active — ${active? esc(all[active].label) : "latest"}</option>`]
+    sel.innerHTML=[`<option value="all">All accounts</option>`, `<option value="">Active — ${active? esc(all[active].label) : "latest"}</option>`]
       .concat(keys.map(k=>`<option value="${esc(k)}">${esc(all[k].label)}${all[k].plan? " · "+esc(all[k].plan):""}</option>`)).join("");
-    sel.value=account;
+    sel.value=allv? "all" : account;
   }
   $("acctSel").addEventListener("change",e=>setAccount(e.target.value));
+  $("toAll").addEventListener("click",()=>setAccount("all"));
+
+  // one button per account, kept across polls so keyboard focus survives a refresh
+  function keyedButtons(parent, cls, keys){
+    const sig=keys.join("|");
+    if(parent.dataset.sig!==sig){
+      parent.innerHTML="";
+      keys.forEach(k=>{
+        const b=document.createElement("button");
+        b.type="button"; b.className=cls; b.dataset.key=k;
+        b.addEventListener("click",()=>setAccount(k));
+        parent.appendChild(b);
+      });
+      parent.dataset.sig=sig;
+    }
+    return [...parent.children];
+  }
+  const shownKey=()=>isAll()? null : (account || (stats&&stats.account&&stats.account.key));
+  const ended=a=>a.has_data && num(a.resets_in_hours)<=0;
+  const acctHTML=a=>`<span class="an">${esc(a.label)}</span>${a.plan? `<span class="pl">${esc(a.plan)}</span>`:""}`;
+
+  function renderStrip(keys, all){
+    const shown=shownKey();
+    keyedButtons($("arows"), "arow", keys).forEach(b=>{
+      const a=all[b.dataset.key], p=PACE[a.pace]||PACE.on_track, used=num(a.used_pct), elapsed=num(a.elapsed_pct);
+      b.setAttribute("aria-current", String(b.dataset.key===shown));
+      b.title=`Show ${a.label} in detail`;
+      const pace = !a.has_data? `<span class="stale">no reading yet</span>`
+        : `${glyphSVG(p.glyph,p.raw)}<span style="color:${p.color}">${p.word}</span>`;
+      const reset = !a.has_data? "–" : ended(a)? `<span class="stale">due</span>` : fmtHM(a.resets_in_hours);
+      b.innerHTML=
+        `<span class="c-acct"><span class="use-dot${a.active?"":" off"}" title="${a.active?"active: the latest session is on this account":""}"></span>${acctHTML(a)}</span>`+
+        `<span class="c-rem"><span class="gauge" title="remaining vs what an even pace would leave now"><i style="background:${p.color};transform:scaleX(${a.has_data? clamp(100-used,0,100)/100 : 0})"></i><s style="left:calc(${clamp(100-elapsed,0,100)}% - 1px)"></s></span>`+
+          `<span class="rv">${a.has_data? fmt(num(a.remaining_pct))+'<span class="u">%</span>' : "–"}</span></span>`+
+        `<span class="c-today"><span class="cl">Today </span>${fmt(num(a.today_spent_pct),1)}<span class="u">%</span></span>`+
+        `<span class="c-budget"><span class="cl">Budget </span>${fmt(num(a.budget_per_day_pct),1)}<span class="u">%/d</span></span>`+
+        `<span class="c-pace">${pace}</span>`+
+        `<span class="c-reset"><span class="cl">Resets in </span>${reset}</span>`;
+    });
+  }
+
+  // small multiples: one compact burn profile per account, each on its own window
+  const mhist={}; // key -> /history for the small multiples
+  function drawMultiples(){
+    const all=summaries(), keys=acctKeys(), todayKey=(stats&&stats.today&&stats.today.date)||"";
+    keyedButtons($("mgrid"), "mcard", keys).forEach(b=>{
+      const k=b.dataset.key, a=all[k], pk=PACE[a.pace]? a.pace : "on_track", p=PACE[pk];
+      b.title=`Show ${a.label} in detail`;
+      const st = !a.has_data? `<span class="stale">no reading yet</span>`
+        : `${glyphSVG(p.glyph,p.raw)}<span style="color:${p.color}">${p.word}</span><span class="num">${fmt(num(a.used_pct))}% used</span>`;
+      const ws=parseLocal(a.window_start), we=parseLocal(a.window_end);
+      const span=(ws&&we)? `<span class="num">${DOW[ws.getDay()]} ${ws.getDate()} ${MON[ws.getMonth()]}</span> → <span class="num">${DOW[we.getDay()]} ${we.getDate()} ${MON[we.getMonth()]} ${pad(we.getHours())}:${pad(we.getMinutes())}</span>` : "";
+      const reset = !a.has_data? "" : ended(a)? "reset due — waiting for a reading" : `resets in <span class="num">${fmtHM(a.resets_in_hours)}</span>`;
+      b.innerHTML=`<span class="mh">${acctHTML(a)}<span class="st">${st}</span></span>`+
+        `<span class="mbox"><svg class="chart" role="img" aria-label="${esc(a.label)}: quota used across its 7-day window against the even-pace plan"></svg></span>`+
+        `<span class="mf"><span>${span}</span><span>${reset}</span></span>`;
+      const svg=b.querySelector("svg.chart"), box=b.querySelector(".mbox");
+      const G=geom(box, box.clientWidth<420? 150 : 170); G.W=Math.max(260, box.clientWidth-8); G.ml=30; G.mr=10; G.mt=10; G.mb=24;
+      drawBurn(svg, G, {start:a.window_start, end:a.window_end, pace:pk, hasData:!!a.has_data,
+        hd:headOf(a.elapsed_pct, a.used_pct), recs:mhist[k]&&mhist[k].records, todayKey, step:50, compact:true});
+    });
+  }
+  async function fetchAllHistories(gen){
+    await Promise.all(acctKeys().map(async k=>{
+      try{ const h=await fetchHistory("account="+encodeURIComponent(k), 10); if(gen===acctGen) mhist[k]=h; }catch(e){/* keep the old one */}
+    }));
+  }
+  // in the all-accounts view the alarm names every account over budget
+  function renderAllAlarm(){
+    const all=summaries(), over=acctKeys().filter(k=>all[k].has_data && all[k].pace==="over_budget").map(k=>all[k].label);
+    $("alarm").classList.toggle("show", over.length>0);
+    $("alarm-sub").textContent=`— ${over.join(", ")}: at this week's rate the quota runs out before the reset.`;
+    const base="weekstat · weekly quota", svc=(stats&&stats.service)||{};
+    document.title = svc.outage? "API down · "+base : over.length? "Over budget · "+base : svc.level==="degraded"? "Degraded · "+base : base;
+  }
 
   // ============ Fetch / poll ============
   async function fetchStats(q){
@@ -721,8 +921,8 @@
     if(!res.ok){ const e=new Error("stats "+res.status); e.status=res.status; throw e; }
     return res.json();
   }
-  async function fetchHistory(q){
-    const res=await fetch("/history?days=30"+(q?"&"+q:""),{cache:"no-store"});
+  async function fetchHistory(q, days){
+    const res=await fetch("/history?days="+(days||30)+(q?"&"+q:""),{cache:"no-store"});
     if(!res.ok) throw new Error("history "+res.status);
     return res.json();
   }
@@ -732,8 +932,8 @@
       let s;
       try{ s=await fetchStats(q); }
       catch(e){
-        // the chosen account was pruned: forget it (also in storage), follow the active one
-        if(e.status===404 && q && gen===acctGen){ chooseAccount(""); return tick(true); }
+        // the chosen account was pruned: forget it (also in storage), back to the default view
+        if(e.status===404 && q && gen===acctGen){ chooseAccount(null); return tick(true); }
         throw e;
       }
       if(gen!==acctGen) return; // the account changed while this was in flight
@@ -741,11 +941,19 @@
       setConnected(true);
       renderAccounts();
       renderStats();
-      if(initial || tickCount%6===0 || !history){
+      if(isAll()){
+        renderAllAlarm();
+        const missing=acctKeys().some(k=>!mhist[k]);
+        if(initial || tickCount%6===0 || missing){
+          await fetchAllHistories(gen);
+          if(gen!==acctGen) return;
+        }
+        drawMultiples();
+      } else if(initial || tickCount%6===0 || !history){
         try{
           const h=await fetchHistory(q);
           if(gen!==acctGen) return;
-          history=h; drawChartA(); drawChartB();
+          history=h; drawChartA(); renderStats(); // the projection follows a manual reset in the history
         }catch(e){/* keep the old history */}
       }
     }catch(err){ setConnected(false); }
@@ -773,7 +981,7 @@
   document.addEventListener("visibilitychange",()=>{ if(!document.hidden && live) tick(false); });
   window.addEventListener("focus",()=>{ if(live) tick(false); });
   let rz=null;
-  window.addEventListener("resize",()=>{ clearTimeout(rz); rz=setTimeout(()=>{ if(stats){ drawLegs(); if(history){ drawChartB(); drawLegs(); drawChartA(); } } },80); });
+  window.addEventListener("resize",()=>{ clearTimeout(rz); rz=setTimeout(()=>{ if(!stats) return; if(isAll()){ drawMultiples(); return; } drawLegs(); if(history){ drawChartB(); drawLegs(); drawChartA(); } },80); });
 
   function boot(){ startTimer(); tick(true); }
   if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",boot); else boot();

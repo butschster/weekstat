@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -144,18 +145,58 @@ func TestRingSpecWeek(t *testing.T) {
 	}
 }
 
-func TestRingPrefsRoundtrip(t *testing.T) {
+func TestPrefsRoundtrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sub", "prefs.json")
-	if got := loadRing(path); got != ringWeek {
-		t.Errorf("missing file: %s, want the %s default", got, ringWeek)
+	if got := loadPrefs(path); got != (prefs{Ring: ringWeek}) {
+		t.Errorf("missing file: %+v, want the week ring following the active account", got)
 	}
-	saveRing(path, ringToday)
-	if got := loadRing(path); got != ringToday {
-		t.Errorf("after save: %s, want %s", got, ringToday)
+	savePrefs(path, prefs{Ring: ringToday, Account: "abc"})
+	if got := loadPrefs(path); got != (prefs{Ring: ringToday, Account: "abc"}) {
+		t.Errorf("after save: %+v", got)
 	}
-	saveRing(path, "nonsense") // hand-edited garbage falls back to the default
-	if got := loadRing(path); got != ringWeek {
-		t.Errorf("invalid value: %s, want the %s default", got, ringWeek)
+	savePrefs(path, prefs{Ring: "nonsense", Account: "abc"}) // hand-edited garbage falls back to the default
+	if got := loadPrefs(path); got.Ring != ringWeek || got.Account != "abc" {
+		t.Errorf("invalid ring: %+v, want the %s default and the account kept", got, ringWeek)
+	}
+}
+
+func TestPrefsReadsOldFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "prefs.json")
+	if err := os.WriteFile(path, []byte(`{"ring":"today"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := loadPrefs(path); got != (prefs{Ring: ringToday}) {
+		t.Errorf("pre-account prefs = %+v, want today ring following the active account", got)
+	}
+}
+
+func TestAccountChoices(t *testing.T) {
+	var s stats
+	if err := json.Unmarshal([]byte(`{"accounts":{
+		"k2":{"label":"zed@example.com","plan":"pro","active":true},
+		"k1":{"label":"amy@example.com","plan":"max"},
+		"k0":{"label":"amy@example.com"}}}`), &s); err != nil {
+		t.Fatal(err)
+	}
+	got := accountChoices(&s)
+	if len(got) != 3 || got[0].Key != "k0" || got[1].Key != "k1" || got[2].Key != "k2" {
+		t.Fatalf("choices = %+v, want by label then key", got)
+	}
+	if title := choiceTitle(got[2]); title != "zed@example.com · pro  (active)" {
+		t.Errorf("title = %q", title)
+	}
+	if title := choiceTitle(accountChoice{Key: "k9"}); title != "k9" {
+		t.Errorf("unlabelled title = %q, want the key", title)
+	}
+}
+
+func TestStatsURLFor(t *testing.T) {
+	base := "http://127.0.0.1:7457/stats"
+	if got := statsURLFor(base, ""); got != base {
+		t.Errorf("follow active = %q", got)
+	}
+	if got := statsURLFor(base, "9e40-w128"); got != base+"?account=9e40-w128" {
+		t.Errorf("pinned = %q", got)
 	}
 }
 
@@ -216,14 +257,25 @@ func TestOutageIconIsPNG(t *testing.T) {
 
 func TestAccountLabels(t *testing.T) {
 	var s stats
-	if accountLine(&s) != "" || accountTag(&s) != "" {
+	if accountLine(&s, false) != "" || accountTag(&s) != "" {
 		t.Error("no account block must give no label")
 	}
 	if err := json.Unmarshal([]byte(`{"account":{"key":"abc","label":"Acme","plan":"max"},"accounts":{"abc":{"label":"Acme"}}}`), &s); err != nil {
 		t.Fatal(err)
 	}
-	if got := accountLine(&s); got != "Account: Acme" {
+	if got := accountLine(&s, false); got != "Account: Acme" {
 		t.Errorf("accountLine = %q", got)
+	}
+	s.Accounts["def"] = struct {
+		Label  string `json:"label"`
+		Plan   string `json:"plan"`
+		Active bool   `json:"active"`
+	}{Label: "Globex"}
+	if got := accountLine(&s, true); got != "Account: Acme · pinned" {
+		t.Errorf("accountLine pinned = %q", got)
+	}
+	if got := accountLine(&s, false); got != "Account: Acme · active" {
+		t.Errorf("accountLine following = %q", got)
 	}
 	if got := accountTag(&s); got != "Acme" {
 		t.Errorf("accountTag with one account = %q, want Acme (always shown)", got)

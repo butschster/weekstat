@@ -72,6 +72,12 @@ type stats struct {
 		Label string `json:"label"`
 		Plan  string `json:"plan"`
 	} `json:"account"`
+	// Accounts summarises every known account by key (the account submenu).
+	Accounts map[string]struct {
+		Label  string `json:"label"`
+		Plan   string `json:"plan"`
+		Active bool   `json:"active"`
+	} `json:"accounts"`
 }
 
 // pace → (Okabe-Ito colorblind-safe hex, glyph, label)
@@ -90,13 +96,17 @@ func paceMeta(p string) (hex, glyph, label string) {
 var (
 	mVerdict, mToday, mTodayBar, mWeek, mWeekBar, mBudget, mReset *systray.MenuItem
 	mService, mIncident                                           *systray.MenuItem
-	mAccount                                                      *systray.MenuItem
+	mAccount, mFollow                                             *systray.MenuItem
 	mRingToday, mRingWeek                                         *systray.MenuItem
 
 	stMu      sync.Mutex
 	lastStats *stats
 	ringMode  string // ringToday | ringWeek — what the panel icon gauges
+	pinnedKey string // account the tray is pinned to; "" follows the active one
 	prefsFile string
+
+	acctMu    sync.Mutex
+	acctItems = map[string]*systray.MenuItem{} // account submenu rows by key
 )
 
 func main() {
@@ -108,10 +118,11 @@ func main() {
 	dashURL = "http://" + *addr + "/"
 
 	prefsFile = *config
-	ringMode = loadRing(prefsFile)
+	p := loadPrefs(prefsFile)
+	ringMode, pinnedKey = p.Ring, p.Account
 	if *ringFlag == ringToday || *ringFlag == ringWeek {
 		ringMode = *ringFlag
-		saveRing(prefsFile, ringMode)
+		savePrefs(prefsFile, prefs{Ring: ringMode, Account: pinnedKey})
 	}
 	systray.Run(onReady, func() {})
 }
@@ -121,9 +132,13 @@ func onReady() {
 	systray.SetTooltip("weekstat — weekly quota")
 	systray.SetIcon(icon(0, "#8A8F99"))
 
+	// With two or more accounts this row opens the account submenu: follow the
+	// active account, or pin the icon and figures to one of them.
 	mAccount = systray.AddMenuItem("", "the Claude account these figures belong to")
 	mAccount.Disable()
 	mAccount.Hide()
+	mFollow = mAccount.AddSubMenuItemCheckbox("Follow active", "show the account of the latest Claude Code session", pinnedKey == "")
+	mFollow.Hide()
 	mVerdict = systray.AddMenuItem("connecting…", "current pace")
 	mVerdict.Disable()
 	// Service rows sit in the verdict group: during an outage the pace verdict
@@ -168,6 +183,8 @@ func onReady() {
 				setRing(ringToday)
 			case <-mRingWeek.ClickedCh:
 				setRing(ringWeek)
+			case <-mFollow.ClickedCh:
+				pinAccount("")
 			case <-mQuit.ClickedCh:
 				systray.Quit()
 				return
@@ -185,17 +202,31 @@ func onReady() {
 	}()
 }
 
-func fetch() (*stats, error) {
-	resp, err := client.Get(statsURL)
+// fetch gets the figures of the pinned account, else the active one's. A
+// pinned account the daemon no longer knows (404) falls back to the active
+// account; the pin is kept in case it comes back.
+func fetch(key string) (*stats, error) {
+	s, status, err := fetchURL(statsURLFor(statsURL, key))
+	if key != "" && status == http.StatusNotFound {
+		s, _, err = fetchURL(statsURL)
+	}
+	return s, err
+}
+
+func fetchURL(u string) (*stats, int, error) {
+	resp, err := client.Get(u)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, resp.StatusCode, fmt.Errorf("%s: %s", u, resp.Status)
+	}
 	var s stats
 	if err := json.NewDecoder(resp.Body).Decode(&s); err != nil {
-		return nil, err
+		return nil, resp.StatusCode, err
 	}
-	return &s, nil
+	return &s, resp.StatusCode, nil
 }
 
 func openURL(u string) {
@@ -215,7 +246,7 @@ func setRing(mode string) {
 	ringMode = mode
 	s := lastStats
 	stMu.Unlock()
-	saveRing(prefsFile, mode)
+	savePrefs(prefsFile, prefs{Ring: mode, Account: currentPin()})
 	if mode == ringToday {
 		mRingToday.Check()
 		mRingWeek.Uncheck()
@@ -228,8 +259,80 @@ func setRing(mode string) {
 	}
 }
 
+func currentPin() string {
+	stMu.Lock()
+	defer stMu.Unlock()
+	return pinnedKey
+}
+
+// pinAccount pins the tray to account key ("" follows the active one),
+// remembers the choice and re-polls.
+func pinAccount(key string) {
+	stMu.Lock()
+	pinnedKey = key
+	mode := ringMode
+	stMu.Unlock()
+	savePrefs(prefsFile, prefs{Ring: mode, Account: key})
+	update()
+}
+
+// renderAccountMenu keeps the account submenu in step with the daemon's
+// accounts: a checkbox row per account (added as accounts appear, hidden when
+// they go), "Follow active" checked when nothing is pinned.
+func renderAccountMenu(s *stats) {
+	acctMu.Lock()
+	defer acctMu.Unlock()
+	pin := currentPin()
+	choices := accountChoices(s)
+	if len(choices) < 2 {
+		mAccount.Disable()
+		mFollow.Hide()
+		for _, it := range acctItems {
+			it.Hide()
+		}
+		return
+	}
+	mAccount.Enable()
+	mFollow.Show()
+	if pin == "" {
+		mFollow.Check()
+	} else {
+		mFollow.Uncheck()
+	}
+	seen := map[string]bool{}
+	for _, c := range choices {
+		seen[c.Key] = true
+		it, ok := acctItems[c.Key]
+		if !ok {
+			it = mAccount.AddSubMenuItemCheckbox(choiceTitle(c), "pin the icon and figures to this account", false)
+			acctItems[c.Key] = it
+			go func(key string, it *systray.MenuItem) {
+				for range it.ClickedCh {
+					pinAccount(key)
+				}
+			}(c.Key, it)
+		}
+		it.SetTitle(choiceTitle(c))
+		if c.Key == pin {
+			it.Check()
+		} else {
+			it.Uncheck()
+		}
+		it.Show()
+	}
+	for k, it := range acctItems {
+		if !seen[k] {
+			it.Hide()
+		}
+	}
+}
+
 func update() {
-	s, err := fetch()
+	key := currentPin()
+	s, err := fetch(key)
+	if currentPin() != key {
+		return // re-pinned while this poll was in flight; the new pin's poll paints
+	}
 	if err != nil {
 		systray.SetTitle("wk ?")
 		systray.SetTooltip("weekstat — daemon unreachable")
@@ -245,7 +348,9 @@ func update() {
 
 func render(s *stats) {
 	renderService(s)
-	if line := accountLine(s); line != "" {
+	renderAccountMenu(s)
+	pinned := currentPin() != "" && s.Account != nil && s.Account.Key == currentPin()
+	if line := accountLine(s, pinned); line != "" {
 		mAccount.SetTitle(line)
 		mAccount.Show()
 	} else {
