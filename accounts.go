@@ -136,12 +136,30 @@ func (acc *AccountState) rollsOver(endUnix int64, now time.Time) bool {
 //     anonymous account. The active account is tried first each time. Two
 //     keyless accounts with windows within an hour of each other can't be told
 //     apart and merge.
-func (st *State) route(key string, endUnix int64, now time.Time) string {
+//
+// A keyed reading whose window is neither its account's window nor the week
+// after it carries a stale tag: the session is still logged in (in memory) to
+// an account it logged out of, while .claude.json already names the new
+// login. It goes to the account in that window, else to a new one keyed by
+// the tag and the window's hour of the week (stable from week to week), and
+// trusted is false: its label and plan describe the other account.
+func (st *State) route(key string, endUnix int64, now time.Time) (routed string, trusted bool) {
 	st.normalize()
 	rolls := func(k string) bool { return st.Accounts[k].rollsOver(endUnix, now) }
 	if key != "" {
-		if _, ok := st.Accounts[key]; ok {
-			return key
+		if acc, ok := st.Accounts[key]; ok {
+			nextWeek := acc.WindowEndUnix + int64(weekDur.Seconds()) // an early reset may start it ahead of time
+			if sameWindow(acc.WindowEndUnix, endUnix) || sameWindow(nextWeek, endUnix) || acc.rollsOver(endUnix, now) {
+				return key, true
+			}
+			if k := st.matchWindow(endUnix, func(string) bool { return true }); k != "" {
+				return k, false
+			}
+			k := fmt.Sprintf("%s-w%03d", key, (endUnix%int64(weekDur.Seconds())+1800)/3600%168)
+			if _, ok := st.Accounts[k]; !ok {
+				st.Accounts[k] = &AccountState{Days: map[string]*DayStat{}}
+			}
+			return k, false
 		}
 		anon := st.matchWindow(endUnix, isAnonymous)
 		if anon == "" {
@@ -153,17 +171,17 @@ func (st *State) route(key string, endUnix int64, now time.Time) string {
 			if st.Active == anon {
 				st.Active = key
 			}
-			return key
+			return key, true
 		}
 		st.Accounts[key] = &AccountState{Days: map[string]*DayStat{}}
-		return key
+		return key, true
 	}
 
 	if k := st.matchWindow(endUnix, func(string) bool { return true }); k != "" {
-		return k
+		return k, false
 	}
 	if k := st.pick(rolls); k != "" {
-		return k
+		return k, false
 	}
 
 	k := legacyKey
@@ -175,7 +193,7 @@ func (st *State) route(key string, endUnix int64, now time.Time) string {
 		}
 	}
 	st.Accounts[k] = &AccountState{Days: map[string]*DayStat{}}
-	return k
+	return k, false
 }
 
 // pick is the active account if keep accepts it, else the most recently
