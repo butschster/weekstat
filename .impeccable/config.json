@@ -1,0 +1,26 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          "dashboard.html"
+        ],
+        "createdAt": "2026-09-28T07:12:19.690Z",
+        "reason": "agent triage: .ro readout rows sit inside the fuel panel's 16px padding; full-width row rules are the instrument-table design"
+      },
+      {
+        "rule": "flat-type-hierarchy",
+        "value": "*",
+        "files": [
+          "dashboard.html"
+        ],
+        "createdAt": "2026-09-28T07:12:19.702Z",
+        "reason": "agent triage: Operate surface; reference/operate.md prescribes a 1.125-1.2 scale for product UI (body 14px, panel h2 16px)"
+      }
+    ]
+  }
+}

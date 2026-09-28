@@ -13,3 +13,7 @@ week-stats.json
 
 # module-local build artefact
 tray/tray
+
+# impeccable skill runtime cache
+.impeccable/hook.cache.json
+.impeccable/questions/

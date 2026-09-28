@@ -1,0 +1,458 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-28T12:00:00Z",
+  "title": "Design System: weekstat",
+  "extensions": {
+    "colorMeta": {
+      "cockpit-ground": {
+        "role": "neutral",
+        "displayName": "Cockpit Ground",
+        "canonical": "oklch(16.6% 0.015 253)",
+        "tonalRamp": [
+          "oklch(15% 0.015 253)",
+          "oklch(27% 0.015 253)",
+          "oklch(39% 0.015 253)",
+          "oklch(51% 0.015 253)",
+          "oklch(63% 0.015 253)",
+          "oklch(75% 0.015 253)",
+          "oklch(85% 0.015 253)",
+          "oklch(95% 0.015 253)"
+        ]
+      },
+      "panel-glass": {
+        "role": "neutral",
+        "displayName": "Panel Glass",
+        "canonical": "oklch(20.1% 0.022 252)",
+        "tonalRamp": [
+          "oklch(15% 0.022 252)",
+          "oklch(27% 0.022 252)",
+          "oklch(39% 0.022 252)",
+          "oklch(51% 0.022 252)",
+          "oklch(63% 0.022 252)",
+          "oklch(75% 0.022 252)",
+          "oklch(85% 0.022 252)",
+          "oklch(95% 0.022 252)"
+        ]
+      },
+      "panel-glass-raised": {
+        "role": "neutral",
+        "displayName": "Raised Glass",
+        "canonical": "oklch(22.7% 0.026 251)",
+        "tonalRamp": [
+          "oklch(15% 0.026 251)",
+          "oklch(27% 0.026 251)",
+          "oklch(39% 0.026 251)",
+          "oklch(51% 0.026 251)",
+          "oklch(63% 0.026 251)",
+          "oklch(75% 0.026 251)",
+          "oklch(85% 0.026 251)",
+          "oklch(95% 0.026 251)"
+        ]
+      },
+      "hairline-rule": {
+        "role": "neutral",
+        "displayName": "Hairline Rule",
+        "canonical": "oklch(28.4% 0.028 249)",
+        "tonalRamp": [
+          "oklch(15% 0.028 249)",
+          "oklch(27% 0.028 249)",
+          "oklch(39% 0.028 249)",
+          "oklch(51% 0.028 249)",
+          "oklch(63% 0.028 249)",
+          "oklch(75% 0.028 249)",
+          "oklch(85% 0.028 249)",
+          "oklch(95% 0.028 249)"
+        ]
+      },
+      "scale-grid": {
+        "role": "neutral",
+        "displayName": "Scale Grid",
+        "canonical": "oklch(25.9% 0.026 249)",
+        "tonalRamp": [
+          "oklch(15% 0.026 249)",
+          "oklch(27% 0.026 249)",
+          "oklch(39% 0.026 249)",
+          "oklch(51% 0.026 249)",
+          "oklch(63% 0.026 249)",
+          "oklch(75% 0.026 249)",
+          "oklch(85% 0.026 249)",
+          "oklch(95% 0.026 249)"
+        ]
+      },
+      "day-rule": {
+        "role": "neutral",
+        "displayName": "Day Rule",
+        "canonical": "oklch(30.4% 0.035 252)",
+        "tonalRamp": [
+          "oklch(15% 0.035 252)",
+          "oklch(27% 0.035 252)",
+          "oklch(39% 0.035 252)",
+          "oklch(51% 0.035 252)",
+          "oklch(63% 0.035 252)",
+          "oklch(75% 0.035 252)",
+          "oklch(85% 0.035 252)",
+          "oklch(95% 0.035 252)"
+        ]
+      },
+      "hover-rule": {
+        "role": "neutral",
+        "displayName": "Hover Rule",
+        "canonical": "oklch(35.7% 0.035 249)",
+        "tonalRamp": [
+          "oklch(15% 0.035 249)",
+          "oklch(27% 0.035 249)",
+          "oklch(39% 0.035 249)",
+          "oklch(51% 0.035 249)",
+          "oklch(63% 0.035 249)",
+          "oklch(75% 0.035 249)",
+          "oklch(85% 0.035 249)",
+          "oklch(95% 0.035 249)"
+        ]
+      },
+      "readout-white": {
+        "role": "neutral",
+        "displayName": "Readout White",
+        "canonical": "oklch(94.3% 0.011 244)",
+        "tonalRamp": [
+          "oklch(15% 0.011 244)",
+          "oklch(27% 0.011 244)",
+          "oklch(39% 0.011 244)",
+          "oklch(51% 0.011 244)",
+          "oklch(63% 0.011 244)",
+          "oklch(75% 0.011 244)",
+          "oklch(85% 0.011 244)",
+          "oklch(95% 0.011 244)"
+        ]
+      },
+      "label-grey": {
+        "role": "neutral",
+        "displayName": "Label Grey",
+        "canonical": "oklch(77.5% 0.026 246)",
+        "tonalRamp": [
+          "oklch(15% 0.026 246)",
+          "oklch(27% 0.026 246)",
+          "oklch(39% 0.026 246)",
+          "oklch(51% 0.026 246)",
+          "oklch(63% 0.026 246)",
+          "oklch(75% 0.026 246)",
+          "oklch(85% 0.026 246)",
+          "oklch(95% 0.026 246)"
+        ]
+      },
+      "dim-grey": {
+        "role": "neutral",
+        "displayName": "Dim Grey",
+        "canonical": "oklch(63.9% 0.034 248)",
+        "tonalRamp": [
+          "oklch(15% 0.034 248)",
+          "oklch(27% 0.034 248)",
+          "oklch(39% 0.034 248)",
+          "oklch(51% 0.034 248)",
+          "oklch(63% 0.034 248)",
+          "oklch(75% 0.034 248)",
+          "oklch(85% 0.034 248)",
+          "oklch(95% 0.034 248)"
+        ]
+      },
+      "column-steel": {
+        "role": "neutral",
+        "displayName": "Column Steel",
+        "canonical": "oklch(54.1% 0.039 250)",
+        "tonalRamp": [
+          "oklch(15% 0.039 250)",
+          "oklch(27% 0.039 250)",
+          "oklch(39% 0.039 250)",
+          "oklch(51% 0.039 250)",
+          "oklch(63% 0.039 250)",
+          "oklch(75% 0.039 250)",
+          "oklch(85% 0.039 250)",
+          "oklch(95% 0.039 250)"
+        ]
+      },
+      "weekend-steel": {
+        "role": "neutral",
+        "displayName": "Weekend Steel",
+        "canonical": "oklch(42.4% 0.039 250)",
+        "tonalRamp": [
+          "oklch(15% 0.039 250)",
+          "oklch(27% 0.039 250)",
+          "oklch(39% 0.039 250)",
+          "oklch(51% 0.039 250)",
+          "oklch(63% 0.039 250)",
+          "oklch(75% 0.039 250)",
+          "oklch(85% 0.039 250)",
+          "oklch(95% 0.039 250)"
+        ]
+      },
+      "plan-magenta": {
+        "role": "primary",
+        "displayName": "Plan Magenta",
+        "canonical": "oklch(71.6% 0.251 338)",
+        "tonalRamp": [
+          "oklch(15% 0.251 338)",
+          "oklch(27% 0.251 338)",
+          "oklch(39% 0.251 338)",
+          "oklch(51% 0.251 338)",
+          "oklch(63% 0.251 338)",
+          "oklch(75% 0.251 338)",
+          "oklch(85% 0.251 338)",
+          "oklch(95% 0.251 338)"
+        ]
+      },
+      "within-green": {
+        "role": "secondary",
+        "displayName": "Within Green",
+        "canonical": "oklch(80.7% 0.163 163)",
+        "tonalRamp": [
+          "oklch(15% 0.163 163)",
+          "oklch(27% 0.163 163)",
+          "oklch(39% 0.163 163)",
+          "oklch(51% 0.163 163)",
+          "oklch(63% 0.163 163)",
+          "oklch(75% 0.163 163)",
+          "oklch(85% 0.163 163)",
+          "oklch(95% 0.163 163)"
+        ]
+      },
+      "caution-amber": {
+        "role": "secondary",
+        "displayName": "Caution Amber",
+        "canonical": "oklch(81.3% 0.165 75)",
+        "tonalRamp": [
+          "oklch(15% 0.165 75)",
+          "oklch(27% 0.165 75)",
+          "oklch(39% 0.165 75)",
+          "oklch(51% 0.165 75)",
+          "oklch(63% 0.165 75)",
+          "oklch(75% 0.165 75)",
+          "oklch(85% 0.165 75)",
+          "oklch(95% 0.165 75)"
+        ]
+      },
+      "over-red": {
+        "role": "secondary",
+        "displayName": "Over Red",
+        "canonical": "oklch(68.7% 0.202 27)",
+        "tonalRamp": [
+          "oklch(15% 0.202 27)",
+          "oklch(27% 0.202 27)",
+          "oklch(39% 0.202 27)",
+          "oklch(51% 0.202 27)",
+          "oklch(63% 0.202 27)",
+          "oklch(75% 0.202 27)",
+          "oklch(85% 0.202 27)",
+          "oklch(95% 0.202 27)"
+        ]
+      },
+      "select-cyan": {
+        "role": "tertiary",
+        "displayName": "Select Cyan",
+        "canonical": "oklch(80.2% 0.135 225)",
+        "tonalRamp": [
+          "oklch(15% 0.135 225)",
+          "oklch(27% 0.135 225)",
+          "oklch(39% 0.135 225)",
+          "oklch(51% 0.135 225)",
+          "oklch(63% 0.135 225)",
+          "oklch(75% 0.135 225)",
+          "oklch(85% 0.135 225)",
+          "oklch(95% 0.135 225)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Verdict",
+        "purpose": "Pace verdict word only, in the state colour."
+      },
+      "readout": {
+        "displayName": "Readout",
+        "purpose": "Headline figure of a fuel-panel row; 18px under 640px."
+      },
+      "readout-sm": {
+        "displayName": "Readout small",
+        "purpose": "Other fuel-panel figures."
+      },
+      "title": {
+        "displayName": "Panel title",
+        "purpose": "Panel headings."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Clauses and annunciator text (13px there)."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Row keys, hints, legends, captions, strip text (12-12.5px)."
+      },
+      "axis": {
+        "displayName": "Axis",
+        "purpose": "Chart scale numbers."
+      }
+    },
+    "shadows": [
+      {
+        "name": "tooltip-lift",
+        "value": "0 3px 8px rgba(0,0,0,.4)",
+        "purpose": "Chart hover tooltips only."
+      }
+    ],
+    "motion": [
+      {
+        "name": "gauge-fill",
+        "value": "transform .25s cubic-bezier(.22,1,.36,1)",
+        "purpose": "Gauge fill changes (scaleX)."
+      },
+      {
+        "name": "value-flash",
+        "value": "color from select-cyan, .6s cubic-bezier(.22,1,.36,1)",
+        "purpose": "A changed figure flashes cyan once."
+      },
+      {
+        "name": "tooltip-fade",
+        "value": "opacity .12s",
+        "purpose": "Tooltip show/hide."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "none",
+        "purpose": "All animation and transition off under prefers-reduced-motion."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "single-column",
+        "value": "980px"
+      },
+      {
+        "name": "compact",
+        "value": "640px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Panel",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "Flat glass box with a hairline border; every section of the page sits in one.",
+      "html": "<section class=\"ds-panel\"><div class=\"ds-ph\"><h2>Burn profile — this window</h2><span>actual vs even-pace plan</span></div><p>Instrument content.</p></section>",
+      "css": ".ds-panel{background:var(--panel,#0F1720);border:1px solid var(--rule,#1F2B37);border-radius:6px;color:#E6EDF3;font:14px/1.5 system-ui,sans-serif;width:360px;} .ds-ph{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:14px 16px 4px;} .ds-ph h2{font-size:16px;font-weight:600;margin:0;} .ds-ph span{font-size:12px;color:#7C8EA0;} .ds-panel p{margin:0;padding:8px 16px 16px;color:#A9B8C6;font-size:12.5px;}"
+    },
+    {
+      "name": "LIVE toggle",
+      "kind": "button",
+      "refersTo": "live-toggle",
+      "description": "Pause or resume polling; the only button on the page.",
+      "html": "<button class=\"ds-live\" type=\"button\" aria-pressed=\"true\"><span class=\"ds-dot\"></span>LIVE</button>",
+      "css": ".ds-live{display:inline-flex;align-items:center;gap:7px;cursor:pointer;font:600 12px system-ui,sans-serif;letter-spacing:.06em;color:#A9B8C6;background:none;border:1px solid #1F2B37;border-radius:6px;padding:4px 9px;} .ds-live:hover{border-color:#2E3E4E;color:#E6EDF3;} .ds-live:focus-visible{outline:2px solid #3FD0FF;outline-offset:2px;} .ds-dot{width:7px;height:7px;border-radius:50%;background:#34E0A1;}"
+    },
+    {
+      "name": "Account select",
+      "kind": "input",
+      "refersTo": "account-select",
+      "description": "Switcher shown when two or more Claude accounts are known.",
+      "html": "<select class=\"ds-sel\"><option>Active — jane.doe@example.com</option><option>work@example.com · max</option></select>",
+      "css": ".ds-sel{font:12px system-ui,sans-serif;color:#E6EDF3;background:#131D28;border:1px solid #1F2B37;border-radius:6px;padding:4px 8px;max-width:240px;} .ds-sel:hover{border-color:#2E3E4E;} .ds-sel:focus-visible{outline:2px solid #3FD0FF;outline-offset:2px;}"
+    },
+    {
+      "name": "Service chip",
+      "kind": "chip",
+      "description": "Claude Code health from status.claude.com; dot by level, whole chip red on outage.",
+      "html": "<a class=\"ds-chip\" href=\"#\"><span class=\"ds-cd\"></span>Claude Code: operational</a> <a class=\"ds-chip ds-out\" href=\"#\"><span class=\"ds-cd\"></span>Claude Code: partial outage</a>",
+      "css": ".ds-chip{display:inline-flex;align-items:center;gap:6px;font:12px system-ui,sans-serif;color:#A9B8C6;text-decoration:none;margin-right:16px;} .ds-chip:hover{color:#E6EDF3;} .ds-chip:focus-visible{outline:2px solid #3FD0FF;outline-offset:2px;border-radius:4px;} .ds-cd{width:7px;height:7px;border-radius:50%;background:#34E0A1;} .ds-out{color:#FF5A4F;} .ds-out .ds-cd{background:#FF5A4F;}"
+    },
+    {
+      "name": "Annunciator (warn)",
+      "kind": "custom",
+      "refersTo": "annunciator",
+      "description": "Alarm strip under the flight strip: hairline in the state colour, faint tint, drawn glyph, bold lead phrase.",
+      "html": "<div class=\"ds-ann\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 16 16\"><path d=\"M8 1.5 L15 14 H1 Z\" fill=\"none\" stroke=\"#FF5A4F\" stroke-width=\"1.5\" stroke-linejoin=\"round\"/><line x1=\"8\" y1=\"6\" x2=\"8\" y2=\"9.6\" stroke=\"#FF5A4F\" stroke-width=\"1.6\" stroke-linecap=\"round\"/><circle cx=\"8\" cy=\"11.8\" r=\".9\" fill=\"#FF5A4F\"/></svg><span><b>Over budget</b> <span class=\"ds-sub\">— at this week's rate the quota runs out before the reset.</span></span></div>",
+      "css": ".ds-ann{display:flex;align-items:flex-start;gap:10px;padding:9px 12px;border-radius:6px;font:13px/1.45 system-ui,sans-serif;color:#E6EDF3;border:1px solid color-mix(in srgb,#FF5A4F 50%,#1F2B37);background:color-mix(in srgb,#FF5A4F 9%,#0F1720);max-width:520px;} .ds-ann svg{flex:none;margin-top:1px;} .ds-ann b{font-weight:650;color:#FF5A4F;} .ds-sub{color:#A9B8C6;}"
+    },
+    {
+      "name": "Fuel readout row",
+      "kind": "custom",
+      "refersTo": "readout-row",
+      "description": "Key, mono value, gauge with the magenta even-pace tick, meta line.",
+      "html": "<div class=\"ds-ro\"><span class=\"ds-k\">Remaining</span><span class=\"ds-v\">61<span class=\"ds-u\">%</span></span><div class=\"ds-g\"><i style=\"width:39%\"></i><s style=\"left:57%\"></s></div><span class=\"ds-m\">39% used · even pace now 57%</span></div>",
+      "css": ".ds-ro{display:grid;grid-template-columns:1fr auto;gap:2px 12px;align-items:baseline;padding:11px 16px;width:300px;background:#0F1720;border-bottom:1px solid #1F2B37;font-family:system-ui,sans-serif;} .ds-k{font-size:12.5px;color:#A9B8C6;} .ds-v{font:500 20px ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums lining-nums;color:#E6EDF3;text-align:right;} .ds-u{color:#7C8EA0;font-size:.78em;} .ds-g{grid-column:1/-1;position:relative;height:8px;margin:8px 0 2px;background:#1A2530;border-radius:1px;} .ds-g i{position:absolute;left:0;top:0;bottom:0;background:#34E0A1;border-radius:1px;transition:width .25s cubic-bezier(.22,1,.36,1);} .ds-g s{position:absolute;top:-4px;bottom:-4px;width:1.5px;background:#FF4FD8;} .ds-m{grid-column:1/-1;font-size:12px;color:#7C8EA0;}"
+    },
+    {
+      "name": "Leg cell",
+      "kind": "custom",
+      "refersTo": "leg-bar",
+      "description": "One day of the window: label, burn bar scaled to two even days with the magenta even-day tick, mono value, share of the window.",
+      "html": "<div class=\"ds-legs\"><div class=\"ds-leg\"><div class=\"ds-d\">Fri <b>25</b> Sep</div><div class=\"ds-bar\"><i style=\"width:62%\"></i><s></s></div><div class=\"ds-lv\">17.6<span class=\"ds-u\">%</span></div><div class=\"ds-sh\">49% of wk</div></div><div class=\"ds-leg ds-today\"><div class=\"ds-d\">Today <b>28</b> Sep</div><div class=\"ds-bar\"><i style=\"width:8%\"></i><s></s></div><div class=\"ds-lv\">2.4<span class=\"ds-u\">%</span></div><div class=\"ds-sh\">7% of wk</div></div><div class=\"ds-leg ds-ahead\"><div class=\"ds-d\">Tue <b>29</b> Sep</div><div class=\"ds-bar\"><s></s></div><div class=\"ds-lv\">—</div></div></div>",
+      "css": ".ds-legs{display:flex;border-top:1px solid #1F2B37;background:#0F1720;font-family:system-ui,sans-serif;width:360px;} .ds-leg{flex:1;padding:9px 6px 6px;border-left:1px solid #223040;} .ds-leg:first-child{border-left-color:transparent;} .ds-d{font-size:12px;color:#A9B8C6;white-space:nowrap;} .ds-d b{font-family:ui-monospace,Menlo,monospace;font-weight:500;color:#E6EDF3;} .ds-bar{position:relative;height:5px;margin:8px 0 7px;background:#1A2530;border-radius:1px;} .ds-bar i{position:absolute;left:0;top:0;bottom:0;border-radius:1px;background:#34E0A1;} .ds-bar s{position:absolute;top:-3px;bottom:-3px;left:50%;width:1.5px;background:#FF4FD8;} .ds-lv{font:500 13px ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;color:#E6EDF3;} .ds-u{color:#7C8EA0;font-size:.78em;} .ds-sh{font-size:12px;color:#7C8EA0;} .ds-today{background:color-mix(in srgb,#3FD0FF 6%,transparent);box-shadow:inset 0 2px 0 #3FD0FF;} .ds-today .ds-d{color:#3FD0FF;} .ds-ahead .ds-d,.ds-ahead .ds-lv{color:#7C8EA0;} .ds-ahead .ds-bar{background:none;border:1px dashed #263444;}"
+    },
+    {
+      "name": "Chart tooltip",
+      "kind": "custom",
+      "refersTo": "tooltip",
+      "description": "Hover readout on both charts; the only lifted element.",
+      "html": "<div class=\"ds-tip\"><span class=\"ds-n\">27.2%</span> used <span class=\"ds-mu\">· 48 h in · plan 29%</span></div>",
+      "css": ".ds-tip{display:inline-block;white-space:nowrap;background:#131D28;border:1px solid #2E3E4E;border-radius:6px;padding:5px 8px;font:12px system-ui,sans-serif;color:#E6EDF3;box-shadow:0 3px 8px rgba(0,0,0,.4);} .ds-n{font-family:ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;} .ds-mu{color:#7C8EA0;}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Night Fuel Log",
+    "overview": "The week is a flight and the quota is its fuel. The dashboard reads like the night-mode fuel page of an electronic flight bag: blue-black cockpit glass, a planned burn drawn in magenta, the actual burn in white on top of it, and the legs (days) logged directly beneath on the same time axis. Instruments are drawn, not decorated: scales, tick marks, hairline rules, one ruled log. Nothing is ornament; every stroke is a reading or the scale it is read against.\n\nDensity is an operator's: 14px body, 12px labels, tabular monospace digits for every figure, panels separated by 20px and ruled internally by 1px hairlines. Colour is scarce and semantic. On a quiet week the page is almost entirely grey-on-black with one magenta plan line and a little green; red appears only when something is actually over. The page is dark only, by owner decision; there is no light theme and no toggle.\n\nIt refuses the tile-row-of-big-numbers analytics dashboard. The largest type on the page is a 20px readout, and the charts, not the figures, lead.",
+    "keyCharacteristics": [
+      "Blue-black cockpit glass, flat panels, hairline rules; no gradients, no glows.",
+      "Colour is meaning only: magenta plan, green/amber/red state, cyan today and selectable, white actual.",
+      "Every number is monospace with tabular lining digits; every word is system sans.",
+      "One shared time axis: the day log sits exactly under its span of the burn curve.",
+      "State is carried by shape and text as well as colour (check circle, triangle, octagon; \"On track\", \"Over budget\")."
+    ],
+    "rules": [
+      {
+        "name": "The Colour Is Meaning Rule",
+        "body": "A saturated colour on this page is a statement: magenta says \"plan\", green/amber/red say \"within / caution / over\", cyan says \"today\" or \"you can act on this\", white says \"actual\". Anything without meaning is drawn in the grey ladder.",
+        "section": "colors"
+      },
+      {
+        "name": "The Magenta Is Plan Rule",
+        "body": "Magenta never marks actual use, state or emphasis. If it is not the even pace, the plan corridor, an even day or a reset, it is not magenta.",
+        "section": "colors"
+      },
+      {
+        "name": "The Fixed Thresholds Rule",
+        "body": "An even day is 100/7 % of the quota. A day is amber past 1.5 even days and red past 2 even days; the plan band is plus or minus half an even day, fixed for the window. Thresholds do not scale with the data.",
+        "section": "colors"
+      },
+      {
+        "name": "The Mono Digits Rule",
+        "body": "Every figure (percent, date, time, count) is set in the mono stack with `tabular-nums lining-nums`. A number in sans is a bug.",
+        "section": "typography"
+      },
+      {
+        "name": "The Small Ceiling Rule",
+        "body": "Nothing on the page is larger than 20px. Hierarchy comes from weight, colour and position, not size (scale about 1.15-1.2).",
+        "section": "typography"
+      },
+      {
+        "name": "The Glass Not Paper Rule",
+        "body": "Surfaces never float. If something needs to stand out, give it a hairline in its state colour and a faint tint, as the annunciators do.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do draw every plan reference (even pace, corridor, even day, reset) in plan magenta, and nothing else in it.",
+      "Do set every figure in the mono stack with tabular lining digits, units in dim grey at 0.78em.",
+      "Do pair every state colour with a shape or word (glyph, verdict text, \"runs out\", \"Over budget\").",
+      "Do keep the day thresholds fixed: amber past 1.5 even days, red past 2; plan band ± half an even day.",
+      "Do keep the burn profile and the day log on one shared time axis.",
+      "Do label stale, partial and pre-reset values in text rather than hiding them; show partial-day values.",
+      "Do give every chart a title, description and a screen-reader data table, and drop animation under reduced motion."
+    ],
+    "donts": [
+      "Don't add a light theme or a theme toggle.",
+      "Don't load webfonts, CDNs or external scripts; the page must work offline from the binary.",
+      "Don't build rows of big-number tiles; no figure exceeds 20px.",
+      "Don't use colour for decoration, gradients, glows or drop shadows on surfaces.",
+      "Don't mark state with a coloured side stripe on cards or rows.",
+      "Don't let one alarm hide another: an outage annunciator never suppresses the over-budget one."
+    ]
+  }
+}
