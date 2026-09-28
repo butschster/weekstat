@@ -220,6 +220,19 @@ the snapshot (see *Wiring*, step b), so:
   statusline before `wk:` (email up to `@`), the dashboard header (full email;
   a switcher appears with a second account), the tray dropdown and tooltip.
 
+**Token sessions.** A session started with `CLAUDE_CODE_OAUTH_TOKEN`
+(`claude setup-token`) is a different account from the one in `.claude.json`,
+so the statusline keys it by a hash of the token (the token itself is never
+written anywhere). Its label is `token · <key>` until you name it.
+
+**Naming accounts.** `~/.claude/weekstat-accounts.json` maps a key (see
+`/accounts` or the dashboard switcher) to a name; it overrides the email for
+that account:
+
+```json
+{ "1c65f4bf39d3": "work" }
+```
+
 Snapshots without a key (older statusline scripts) are matched by window:
 same `resets_at` → same account; a window that has ended → its weekly
 rollover; anything else → another, anonymous account.

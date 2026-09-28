@@ -16,19 +16,35 @@ input=$(cat)
 # read; .credentials.json is not. An auto-generated organization name
 # ("<email>'s Organization") is not used as a label.
 # Fields are split on \x1f, not tabs: bash collapses empty tab-separated fields.
-_cj="${CLAUDE_CONFIG_DIR:-$HOME}/.claude.json"
-IFS=$'\x1f' read -r _au _al _ap <<<"$(
-  jq -r '.oauthAccount // {} | [
-    (.accountUuid // ""),
-    (if (.emailAddress // "") != "" then .emailAddress
-     else (.organizationName // "") | if test("@") or endswith("\u0027s Organization") then "" else . end end),
-    (if (.userRateLimitTier // "") != "" then .userRateLimitTier else (.organizationType // "") end)
-  ] | join("\u001f")' "$_cj" 2>/dev/null
-)"
-acct_key=""
-if [ -n "$_au" ]; then
-  if command -v sha256sum >/dev/null; then acct_key=$(printf '%s' "$_au" | sha256sum | cut -c1-12)
-  else acct_key=$(printf '%s' "$_au" | shasum -a 256 | cut -c1-12); fi
+#
+# A session logged in with CLAUDE_CODE_OAUTH_TOKEN (`claude setup-token`) is a
+# different account from the one in .claude.json, so its key is a hash of the
+# token instead (the token itself goes nowhere) and its label comes only from
+# ~/.claude/weekstat-accounts.json — {"<key>": "name"}, which also overrides the
+# label of any other account.
+_sha12() {
+  if command -v sha256sum >/dev/null; then sha256sum | cut -c1-12
+  else shasum -a 256 | cut -c1-12; fi
+}
+_au="" _al="" _ap="" acct_key=""
+if [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
+  acct_key=$(printf 'token:%s' "$CLAUDE_CODE_OAUTH_TOKEN" | _sha12)
+  _ap=token
+else
+  _cj="${CLAUDE_CONFIG_DIR:-$HOME}/.claude.json"
+  IFS=$'\x1f' read -r _au _al _ap <<<"$(
+    jq -r '.oauthAccount // {} | [
+      (.accountUuid // ""),
+      (if (.emailAddress // "") != "" then .emailAddress
+       else (.organizationName // "") | if test("@") or endswith("\u0027s Organization") then "" else . end end),
+      (if (.userRateLimitTier // "") != "" then .userRateLimitTier else (.organizationType // "") end)
+    ] | join("\u001f")' "$_cj" 2>/dev/null
+  )"
+  [ -n "$_au" ] && acct_key=$(printf '%s' "$_au" | _sha12)
+fi
+if [ -n "$acct_key" ]; then
+  _nm=$(jq -r --arg k "$acct_key" '.[$k] // empty' "$HOME/.claude/weekstat-accounts.json" 2>/dev/null)
+  [ -n "$_nm" ] && _al=$_nm
   _tagged=$(printf '%s' "$input" | jq -c --arg k "$acct_key" --arg l "$_al" --arg p "$_ap" \
     '. + {weekstat: {account: {key: $k, label: $l, plan: $p}}}' 2>/dev/null)
   [ -n "$_tagged" ] && input=$_tagged     # on a jq failure keep the untagged snapshot
