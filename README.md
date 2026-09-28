@@ -78,7 +78,7 @@ Prebuilt binaries are also on the [Releases](https://github.com/butschster/weeks
 
 ## Wiring into Claude Code
 
-Two steps: point the statusline at a script and add two integration lines to it.
+Two steps: point the statusline at a script and add the integration lines to it.
 
 ### 1. Set statusLine in `~/.claude/settings.json`
 
@@ -100,7 +100,7 @@ cp examples/statusline-command.sh ~/.claude/statusline-command.sh
 chmod +x ~/.claude/statusline-command.sh
 ```
 
-### 2. Two integration points (if grafting into your own statusline)
+### 2. Integration points (if grafting into your own statusline)
 
 **a) Feed stdin to the daemon** — right after reading the input:
 
@@ -108,17 +108,54 @@ chmod +x ~/.claude/statusline-command.sh
 input=$(cat)
 
 _si="$HOME/.claude/.statusline-input.json"
-printf '%s' "$input" > "$_si.tmp" && mv -f "$_si.tmp" "$_si"
+if [ -n "$input" ] && _st=$(mktemp "$_si.XXXXXX"); then   # unique per render: sessions run concurrently
+  printf '%s' "$input" > "$_st" && mv -f "$_st" "$_si" || rm -f "$_st"
+fi
 ```
 
-**b) Show "today" from the daemon's output** — where you render the line:
+**b) Tag the snapshot with the account** (optional, recommended with more than
+one Claude account) — before the snapshot is written. The daemon keeps a separate
+window and history per account key, so switching accounts isn't mistaken for a
+weekly reset. The label is the account's email, else the organization name (an
+auto-generated `<email>'s Organization` is skipped). Only non-secret fields of
+`.claude.json` are read; the key is a hash, not the account id;
+`.credentials.json` is never opened. The email stays on this machine (the
+snapshot, `week-stats.json` and the dashboard on 127.0.0.1):
+
+```bash
+_cj="${CLAUDE_CONFIG_DIR:-$HOME}/.claude.json"
+IFS=$'\x1f' read -r _au _al _ap <<<"$(jq -r '.oauthAccount // {} | [(.accountUuid // ""),
+  (if (.emailAddress // "") != "" then .emailAddress
+   else (.organizationName // "") | if test("@") or endswith("\u0027s Organization") then "" else . end end),
+  (if (.userRateLimitTier // "") != "" then .userRateLimitTier else (.organizationType // "") end)
+  ] | join("\u001f")' "$_cj" 2>/dev/null)"
+if [ -n "$_au" ]; then
+  if command -v sha256sum >/dev/null; then acct_key=$(printf '%s' "$_au" | sha256sum | cut -c1-12)
+  else acct_key=$(printf '%s' "$_au" | shasum -a 256 | cut -c1-12); fi          # macOS
+  _tagged=$(printf '%s' "$input" | jq -c --arg k "$acct_key" --arg l "$_al" --arg p "$_ap" \
+    '. + {weekstat: {account: {key: $k, label: $l, plan: $p}}}' 2>/dev/null)
+  [ -n "$_tagged" ] && input=$_tagged   # never replace the snapshot with an empty one
+fi
+```
+
+Without it everything still works: readings are told apart by their window
+(`resets_at`), which fails only for two accounts whose windows reset within
+the same hour.
+
+**c) Show "today" from the daemon's output** — where you render the line:
 
 ```bash
 today=$(jq -r '.today.spent_pct // empty' "$HOME/.claude/week-stats.json" 2>/dev/null)
 [ -n "$today" ] && printf ' · today %.0f%%' "$today"
 ```
 
-**c) Flag an outage** — read the daemon's service check before drawing the line:
+With the account tag, read this session's own account (the daemon's top-level
+figures belong to whichever session rendered last):
+`jq -r --arg k "$acct_key" '.accounts[$k].today_spent_pct // empty'`. The example
+script does this and always names the account at the start of the `wk:` line
+(the part of the email before `@`).
+
+**d) Flag an outage** — read the daemon's service check before drawing the line:
 
 ```bash
 svc_outage=$(jq -r '.service.outage // false' "$HOME/.claude/week-stats.json" 2>/dev/null)
@@ -141,6 +178,8 @@ in `examples/` does both.
 | `GET /stats` | Current snapshot as JSON (also written to `week-stats.json`) |
 | `GET /history?days=N` | Daily time-series that feeds the charts (default 30, max 365) |
 | `GET /service` | Just the Claude Code health check from status.claude.com (also embedded in `/stats` as `service`) |
+| `GET /accounts` | Every known account (key, label, plan, active, used%, today, budget/day), most recent first |
+| `?account=<key>` | On `/stats` and `/history`: that account instead of the active one (404 if unknown). The dashboard shows an account switcher when there is more than one. |
 | `GET /healthz` | `ok` |
 
 Example `/stats`:
@@ -153,9 +192,60 @@ Example `/stats`:
   "today":   { "date": "2026-07-09", "start_used_pct": 23, "current_used_pct": 27, "spent_pct": 4, "spent_in_window_pct": 4, "budget_pct": 15, "left_pct": 11 },
   "days":    [ { "date": "2026-07-09", "spent_pct": 4, "share_pct": 100, "is_today": true } ],
   "service": { "component": "Claude Code", "status": "operational", "level": "ok", "outage": false,
-               "label": "operational", "page_url": "https://status.claude.com", "checked_at": "2026-07-09 12:00:05" }
+               "label": "operational", "page_url": "https://status.claude.com", "checked_at": "2026-07-09 12:00:05" },
+  "account":  { "key": "3f9a1c0b7d2e", "label": "jane@example.com", "plan": "max 20x" },
+  "accounts": { "3f9a1c0b7d2e": { "key": "3f9a1c0b7d2e", "label": "jane@example.com", "plan": "max 20x", "active": true,
+                                  "updated_at": "2026-07-09 12:00:05", "used_pct": 27, "remaining_pct": 73,
+                                  "budget_per_day_pct": 15, "today_spent_pct": 4, "pace": "on_track" } }
 }
 ```
+
+All top-level figures are the **active** account's (the one from the latest
+snapshot). `account` and `accounts` appear once an account is known; older
+consumers can ignore them. `label` is the account's email (else the
+organization name), or `plan · key` when neither is known or two accounts
+share it.
+
+---
+
+## Several accounts
+
+Each Claude account has its own 7-day window. The daemon keeps a separate
+window and day history per account, keyed by the hash the statusline puts in
+the snapshot (see *Wiring*, step b), so:
+
+- switching accounts (or running sessions on two accounts at once, e.g. with
+  `CLAUDE_CONFIG_DIR`) is not a reset, and "today" never mixes accounts;
+- the current account is always named, even when there is only one: the
+  statusline before `wk:` (email up to `@`), the dashboard header (full email;
+  a switcher appears with a second account), the tray dropdown and tooltip.
+
+Snapshots without a key (older statusline scripts) are matched by window:
+same `resets_at` → same account; a window that has ended → its weekly
+rollover; anything else → another, anonymous account.
+
+Upgrading keeps the history: the existing state becomes the `legacy` account,
+and the first keyed reading in the same window (or in its next week) takes it
+over. Labels follow the latest snapshot, so an account first seen without an
+email gets it on the next render.
+
+**Rolling back to a pre-accounts build.** An older build reads only the top-level
+figures, which mirror the active account; on its first write it drops the other
+accounts. So before this build first writes the state in a form an older one
+can't fully read back (the migration, or when a second account appears) it
+saves the previous file once as `~/.claude/.weekstat-state.json.bak` (never
+overwritten). To roll back:
+
+```bash
+systemctl --user stop weekstat
+cp ~/.claude/.weekstat-state.json ~/.claude/.weekstat-state.json.accounts   # keep every account's history
+cp ~/.claude/.weekstat-state.json.bak ~/.claude/.weekstat-state.json        # optional: the pre-accounts state
+# install the older binary, then:
+systemctl --user start weekstat
+```
+
+When upgrading again, put the `.accounts` copy back before starting the new build
+to recover the other accounts' history.
 
 ---
 
@@ -221,6 +311,7 @@ dropdown, remembered in `~/.claude/.weekstat-tray.json`):
 
 | Item | Example |
 |------|---------|
+| Account | `Account: jane@example.com` (the active account, also in the tooltip; hidden until the daemon reports one) |
 | Pace verdict | `✓ on track` (hidden during an outage — the service row is the headline then) |
 | Service | `Claude Code: ✓ operational` / `Claude Code: ⛔ partial outage` (click → status page) |
 | Incident | `↳ Elevated errors for multiple models` (click → incident; hidden when none; long titles are cut, the tooltip has the full text) |

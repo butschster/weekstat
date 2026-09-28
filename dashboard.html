@@ -53,10 +53,19 @@
   }
   .wordmark .logo b{color:var(--accent);font-weight:650;}
   .wordmark .tag{font-size:11.5px;color:var(--text-lo);letter-spacing:.04em;text-transform:uppercase;}
-  h1.srt{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;}
+  .srt{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;}
   .mast-right{display:flex;align-items:center;gap:14px;}
   .updated{font-size:11.5px;color:var(--text-lo);}
   .updated .num{color:var(--text-mid);}
+
+  /* Account switcher (shown only when more than one account is known) */
+  .acct-sel{
+    font:inherit;font-size:11.5px;color:var(--text-mid);max-width:220px;
+    background:var(--surface);border:1px solid var(--hairline);border-radius:999px;padding:4px 10px;
+  }
+  .acct-sel[hidden]{display:none;}
+  .acct-name{font-size:11.5px;color:var(--text-mid);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .acct-name[hidden]{display:none;}
 
   /* Live toggle */
   .live-toggle{
@@ -222,6 +231,10 @@
     .hero-action{border-left:0;padding-left:0;text-align:left;width:100%;flex-direction:row;align-items:baseline;gap:8px;}
     .hero-action .big{font-size:26px;}
     .cards{grid-template-columns:1fr;}
+    header.mast{flex-wrap:wrap;}
+    .mast-right{flex-wrap:wrap;gap:8px 12px;}
+    .acct-sel{order:3;flex-basis:100%;max-width:none;}
+    .acct-name{max-width:100%;}
   }
 
   @media (prefers-reduced-motion: reduce){
@@ -238,6 +251,9 @@
     </div>
     <h1 class="srt">Claude Code weekly quota dashboard</h1>
     <div class="mast-right">
+      <span class="acct-name num" id="acctName" hidden title="Claude account shown"></span>
+      <label class="srt" for="acctSel">Account</label>
+      <select class="acct-sel" id="acctSel" hidden title="Which Claude account to show"></select>
       <span class="updated" id="updated">updated —</span>
       <span class="live-toggle live" id="liveToggle" role="button" tabindex="0" aria-pressed="true" title="Pause / resume live updates">
         <span class="dot"></span><span id="liveLabel">Live</span>
@@ -786,26 +802,71 @@
   }
 
   // ============ FETCH / POLL / CONNECTION ============
-  async function fetchStats(){
-    const res=await fetch("/stats",{cache:"no-store"});
-    if(!res.ok) throw new Error("stats "+res.status);
+  // ---- Account: "" follows the daemon's active account ----
+  let account="";
+  try{ account=localStorage.getItem("weekstat.account")||""; }catch(e){}
+  const acctQ=()=>account? "account="+encodeURIComponent(account) : "";
+  // acctGen bumps on every account change; a response fetched for an earlier
+  // choice is dropped, so a slow reply can't paint the wrong account.
+  let acctGen=0;
+  function chooseAccount(k){
+    account=k; acctGen++;
+    try{ k? localStorage.setItem("weekstat.account",k) : localStorage.removeItem("weekstat.account"); }catch(e){}
+    history=null; prev.acct=null;
+  }
+  function setAccount(k){ chooseAccount(k); tick(true); }
+  function renderAccounts(){
+    // the account on screen is always named; the switcher appears with a second one
+    const cur=stats&&stats.account, nameEl=$("acctName");
+    nameEl.hidden=!cur;
+    if(cur){ nameEl.textContent=cur.label; nameEl.title="Claude account: "+cur.label+(cur.plan?" · "+cur.plan:""); }
+    const sel=$("acctSel"), all=(stats&&stats.accounts)||{};
+    const keys=Object.keys(all).sort((a,b)=>all[a].label.localeCompare(all[b].label));
+    sel.hidden = keys.length<2;
+    const sig=keys.map(k=>k+"="+all[k].label+(all[k].active?"*":"")).join("|")+"#"+account;
+    if(sel.hidden || prev.acct===sig) return;
+    prev.acct=sig;
+    const active=keys.find(k=>all[k].active);
+    const opts=[`<option value="">Active${active? " — "+esc(all[active].label):""}</option>`]
+      .concat(keys.map(k=>`<option value="${esc(k)}">${esc(all[k].label)}</option>`));
+    sel.innerHTML=opts.join("");
+    sel.value=account;
+  }
+  $("acctSel").addEventListener("change",e=>setAccount(e.target.value));
+
+  async function fetchStats(q){
+    const res=await fetch("/stats"+(q?"?"+q:""),{cache:"no-store"});
+    if(!res.ok){ const e=new Error("stats "+res.status); e.status=res.status; throw e; }
     return res.json();
   }
-  async function fetchHistory(){
-    const res=await fetch("/history?days=30",{cache:"no-store"});
+  async function fetchHistory(q){
+    const res=await fetch("/history?days=30"+(q?"&"+q:""),{cache:"no-store"});
     if(!res.ok) throw new Error("history "+res.status);
     return res.json();
   }
 
   async function tick(initial){
+    const gen=acctGen, q=acctQ();
     try{
-      const s=await fetchStats();
+      let s;
+      try{ s=await fetchStats(q); }
+      catch(e){
+        // the chosen account was pruned: forget it (also in storage), follow the active one
+        if(e.status===404 && q && gen===acctGen){ chooseAccount(""); return tick(true); }
+        throw e;
+      }
+      if(gen!==acctGen) return; // the account changed while this was in flight
       stats=s; lastOk=Date.now();
       setConnected(true);
+      renderAccounts();
       renderStats();
       // history: fetch on first load and refresh occasionally (every ~6th tick)
       if(initial || tickCount%6===0 || !history){
-        try{ history=await fetchHistory(); drawChartA(); drawChartB(); }catch(e){/* keep old history */}
+        try{
+          const h=await fetchHistory(q);
+          if(gen!==acctGen) return;
+          history=h; drawChartA(); drawChartB();
+        }catch(e){/* keep old history */}
       }
     }catch(err){
       setConnected(false);
