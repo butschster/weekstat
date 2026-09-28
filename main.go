@@ -474,13 +474,13 @@ func (a *App) sampleAccount(info AccountInfo, used float64, resetsAt time.Time, 
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	key := a.st.route(info.Key, resetsAt.Unix(), now)
+	key, trusted := a.st.route(info.Key, resetsAt.Unix(), now)
 	acc := a.st.Accounts[key]
-	if info.Key != "" {
+	if trusted {
 		acc.Label = accountLabel(info.Label) // follows the latest snapshot
-	}
-	if info.Plan != "" {
-		acc.Plan = info.Plan
+		if info.Plan != "" {
+			acc.Plan = info.Plan
+		}
 	}
 	acc.sample(used, resetsAt, now)
 	a.st.Active = key

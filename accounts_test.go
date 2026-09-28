@@ -112,6 +112,36 @@ func TestConcurrentSessionsDoNotFlap(t *testing.T) {
 	}
 }
 
+// A session still logged in to account B after .claude.json switched to A
+// sends A's key with B's window: it goes to its own account, stable across
+// renders, and does not touch A's state or label.
+func TestStaleKeyWithOtherWindow(t *testing.T) {
+	a := newApp()
+	endA := at(2026, time.August, 25, 12, 0)
+	endB := at(2026, time.August, 21, 7, 0)
+	stale := AccountInfo{Key: acctA.Key, Label: "someone-else", Plan: "claude_pro"}
+	for i := 0; i < 4; i++ {
+		now := at(2026, time.August, 19, 9, 0).Add(time.Duration(i) * time.Minute)
+		a.sampleAccount(acctA, float64(20+i), endA, now)
+		a.sampleAccount(stale, float64(90+i), endB, now.Add(time.Second))
+	}
+	if len(a.st.Accounts) != 2 {
+		t.Fatalf("accounts = %v, want 2", a.st.sortedKeys())
+	}
+	accA := a.st.Accounts[acctA.Key]
+	if accA.WindowEndUnix != endA.Unix() || accA.Label != acctA.Label || accA.UsedPct != 23 {
+		t.Errorf("A = end %d label %q used %v, want untouched", accA.WindowEndUnix, accA.Label, accA.UsedPct)
+	}
+	if d := todaySpent(t, a, acctA.Key, "2026-08-19"); d.CarrySpent != 0 || spentOf(d) != 3 {
+		t.Errorf("A carry=%v spent=%v, want 0 and 3", d.CarrySpent, spentOf(d))
+	}
+	for k, acc := range a.st.Accounts {
+		if k != acctA.Key && (acc.Label != "" || spentOf(acc.Days["2026-08-19"]) != 3) {
+			t.Errorf("stale account %s: label %q spent %v", k, acc.Label, spentOf(acc.Days["2026-08-19"]))
+		}
+	}
+}
+
 // Old statusline (no key): A→B→A is told apart by the window.
 func TestKeylessSwitchFallsBackToWindow(t *testing.T) {
 	a := newApp()
